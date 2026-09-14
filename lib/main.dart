@@ -4,119 +4,290 @@ void main() {
   runApp(const MyApp());
 }
 
+/// Langues supportées par le micro-test.
+/// FR/EN en LTR, AR en RTL pour valider le layout bidirectionnel.
+enum AppLang { fr, en, ar }
+
+extension AppLangX on AppLang {
+  String get label {
+    switch (this) {
+      case AppLang.fr:
+        return 'FR';
+      case AppLang.en:
+        return 'EN';
+      case AppLang.ar:
+        return 'AR';
+    }
+  }
+
+  bool get isRtl => this == AppLang.ar;
+}
+
+/// Micro-test écran d'accueil QuizRail :
+/// - train animé (AnimationController + CustomPainter pour les rails)
+/// - compteur de jetons (état éphémère type streak/timer/position)
+/// - sélecteur FR/EN/AR (dont RTL)
+/// Zéro dépendance externe : Flutter SDK seul.
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'QuizRail',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: .fromSeed(seedColor: Colors.teal),
+        useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const HomeScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
+  AppLang _lang = AppLang.fr;
+  int _tokens = 120;
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+  late final AnimationController _trainController = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 3),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _trainController.dispose();
+    super.dispose();
+  }
+
+  String _t({required String fr, required String en, required String ar}) {
+    switch (_lang) {
+      case AppLang.fr:
+        return fr;
+      case AppLang.en:
+        return en;
+      case AppLang.ar:
+        return ar;
+    }
+  }
+
+  void _addTokens() {
+    setState(() => _tokens += 10);
+  }
+
+  void _setLang(AppLang lang) {
+    setState(() => _lang = lang);
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
+    return Directionality(
+      textDirection: _lang.isRtl ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_t(fr: 'QuizRail – Accueil', en: 'QuizRail – Home', ar: 'QuizRail – الرئيسية')),
+          centerTitle: true,
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
           children: [
-            const Text('You have pushed the button this many times:'),
+            // Sélecteur de langue
+            SegmentedButton<AppLang>(
+              segments: const [
+                ButtonSegment(value: AppLang.fr, label: Text('FR')),
+                ButtonSegment(value: AppLang.en, label: Text('EN')),
+                ButtonSegment(value: AppLang.ar, label: Text('AR')),
+              ],
+              selected: {_lang},
+              onSelectionChanged: (selection) => _setLang(selection.first),
+            ),
+            const SizedBox(height: 24),
+            // Compteur de jetons
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.confirmation_num, size: 32),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _t(fr: 'Jetons', en: 'Tokens', ar: 'رموز'),
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          Text(
+                            '$_tokens',
+                            key: const Key('tokenCount'),
+                            style: Theme.of(context).textTheme.headlineMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                    FilledButton.icon(
+                      key: const Key('addTokensButton'),
+                      onPressed: _addTokens,
+                      icon: const Icon(Icons.add),
+                      label: const Text('+10'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Train animé
+            Card(
+              clipBehavior: Clip.hardEdge,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  children: [
+                    Text(
+                      _t(
+                        fr: 'Micro-test animation',
+                        en: 'Animation micro-test',
+                        ar: 'اختبار الرسوم المتحركة',
+                      ),
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 12),
+                    TrainAnimation(
+                      key: const Key('trainAnimation'),
+                      controller: _trainController,
+                      isRtl: _lang.isRtl,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _addTokens,
+              child: Text(_t(fr: 'Jouer', en: 'Play', ar: 'العب')),
+            ),
+            const SizedBox(height: 8),
             Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+              _t(
+                fr: 'Riverpod prévu en Phase 1, aucun package externe ici.',
+                en: 'Riverpod planned for Phase 1, no external package here.',
+                ar: 'Riverpod مخطط له في المرحلة 1، لا حزم خارجية هنا.',
+              ),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+    );
+  }
+}
+
+/// Train qui traverse l'écran en boucle.
+/// Le sens s'inverse en AR pour rester cohérent avec le RTL.
+class TrainAnimation extends StatelessWidget {
+  const TrainAnimation({
+    super.key,
+    required this.controller,
+    required this.isRtl,
+  });
+
+  final AnimationController controller;
+  final bool isRtl;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 90,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = constraints.maxWidth;
+          return AnimatedBuilder(
+            animation: controller,
+            builder: (context, _) {
+              // 0.0 -> 1.0 en boucle, avec marge pour sortie d'écran.
+              final progress = controller.value;
+              final trainWidth = 140.0;
+              final dx = isRtl
+                  ? maxWidth - progress * (maxWidth + trainWidth * 2) + trainWidth
+                  : -trainWidth + progress * (maxWidth + trainWidth * 2);
+              return Stack(
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(painter: RailsPainter()),
+                  ),
+                  Positioned(
+                    left: dx,
+                    top: 8,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.train, size: 44),
+                        const SizedBox(width: 4),
+                        Container(
+                          width: 36,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: Colors.teal.shade300,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Icon(Icons.people, size: 20),
+                        ),
+                        const SizedBox(width: 4),
+                        Container(
+                          width: 36,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade300,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Icon(Icons.quiz, size: 20),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
       ),
     );
   }
+}
+
+/// Rails dessinés en CustomPainter (préfigure les rails du plateau).
+/// C'est ce rendu qu'il faudra tester sur appareil réel en Phase 1.
+class RailsPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final railPaint = Paint()
+      ..color = Colors.grey.shade600
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke;
+    final sleeperPaint = Paint()
+      ..color = Colors.brown.shade300
+      ..strokeWidth = 4;
+
+    final y1 = size.height - 28;
+    final y2 = size.height - 12;
+    canvas.drawLine(Offset(0, y1), Offset(size.width, y1), railPaint);
+    canvas.drawLine(Offset(0, y2), Offset(size.width, y2), railPaint);
+
+    for (var x = 8.0; x < size.width; x += 24) {
+      canvas.drawLine(Offset(x, y1 - 2), Offset(x, y2 + 2), sleeperPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

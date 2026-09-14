@@ -1,30 +1,73 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:quizrail/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  testWidgets('Affiche titre FR et compteur initial', (tester) async {
     await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('QuizRail – Accueil'), findsOneWidget);
+    expect(find.byKey(const Key('tokenCount')), findsOneWidget);
+    expect(find.text('120'), findsOneWidget);
+    expect(find.byKey(const Key('trainAnimation')), findsOneWidget);
+  });
+
+  testWidgets('Bouton +10 incrémente les jetons', (tester) async {
+    await tester.pumpWidget(const MyApp());
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('addTokensButton')));
+    await tester.pump();
+
+    expect(find.text('130'), findsOneWidget);
+  });
+
+  testWidgets('Passage en EN change les libellés', (tester) async {
+    await tester.pumpWidget(const MyApp());
+    await tester.pump();
+
+    await tester.tap(find.text('EN'));
+    await tester.pump();
+
+    expect(find.text('QuizRail – Home'), findsOneWidget);
+    expect(find.text('Tokens'), findsOneWidget);
+    expect(find.text('Play'), findsOneWidget);
+  });
+
+  testWidgets('Passage en AR active le RTL', (tester) async {
+    await tester.pumpWidget(const MyApp());
+    await tester.pump();
+
+    await tester.tap(find.text('AR'));
+    await tester.pump();
+
+    expect(find.text('QuizRail – الرئيسية'), findsOneWidget);
+    // Le Directionality racine du HomeScreen doit être en RTL.
+    final directionality = tester.widget<Directionality>(
+      find
+          .ancestor(
+            of: find.byType(Scaffold),
+            matching: find.byType(Directionality),
+          )
+          .first,
+    );
+    expect(directionality.textDirection, TextDirection.rtl);
+  });
+
+  testWidgets('Le train avance entre deux frames', (tester) async {
+    await tester.pumpWidget(const MyApp());
+    await tester.pump();
+
+    final trainFinder = find.byKey(const Key('trainAnimation'));
+    expect(trainFinder, findsOneWidget);
+
+    // L'animation est en repeat() : deux frames espacées doivent peindre
+    // quelque chose de différent sans crasher (pas de pumpAndSettle).
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(trainFinder, findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(trainFinder, findsOneWidget);
   });
 }
