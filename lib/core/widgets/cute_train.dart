@@ -502,12 +502,16 @@ class TrainAnimation extends StatelessWidget {
                   Positioned(
                     left: dx,
                     top: trainTop,
-                    child: Transform.rotate(
-                      angle: isRtl ? -tilt : tilt,
-                      child: Transform.scale(
-                        scale: 1.18,
-                        alignment: Alignment.bottomCenter,
-                        child: CuteTrain(mirrored: isRtl),
+                    // Cache raster isolé : le train animé à 60 ips ne fait
+                    // jamais repeindre le reste de l'écran (bas de gamme).
+                    child: RepaintBoundary(
+                      child: Transform.rotate(
+                        angle: isRtl ? -tilt : tilt,
+                        child: Transform.scale(
+                          scale: 1.18,
+                          alignment: Alignment.bottomCenter,
+                          child: CuteTrain(mirrored: isRtl),
+                        ),
                       ),
                     ),
                   ),

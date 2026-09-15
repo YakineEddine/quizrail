@@ -44,5 +44,12 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Clés de signature release : NE JAMAIS committer (perdues = app non
+# réinscriptible sur Play). Sauvegarde hors machine (USB + gestionnaire
+# de mots de passe). Voir play-store/checklist : keystore + key.properties.
+*.jks
+*.keystore
+/android/key.properties
+
 # Widget Preview related
 .widget_preview/

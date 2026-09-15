@@ -11,6 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/game_button.dart';
 import 'ads_service.dart';
 import 'billing_service.dart';
+import 'consent_service.dart';
 import 'monetization_config.dart';
 import 'shop_providers.dart';
 
@@ -322,7 +323,7 @@ class _StoreUnavailable extends StatelessWidget {
   }
 }
 
-class _ShopBody extends StatelessWidget {
+class _ShopBody extends StatefulWidget {
   const _ShopBody({
     required this.products,
     required this.prefs,
@@ -347,7 +348,25 @@ class _ShopBody extends StatelessWidget {
       required String ar}) t;
 
   @override
+  State<_ShopBody> createState() => _ShopBodyState();
+}
+
+class _ShopBodyState extends State<_ShopBody> {
+  // Future créé UNE fois : recréé à chaque build, il laisserait un timer
+  // en suspens à chaque rebuild (et en tests fake-async).
+  late final Future<bool> _privacyFuture =
+      AdsConsent.privacyOptionsRequired();
+
+  @override
   Widget build(BuildContext context) {
+    final products = widget.products;
+    final prefs = widget.prefs;
+    final buyingId = widget.buyingId;
+    final rewardBusy = widget.rewardBusy;
+    final onBuy = widget.onBuy;
+    final onRewarded = widget.onRewarded;
+    final onEquip = widget.onEquip;
+    final t = widget.t;
     final groups = groupShopProducts(products);
     return ListView(
       key: const Key('shopList'),
@@ -393,6 +412,32 @@ class _ShopBody extends StatelessWidget {
             ),
           const SizedBox(height: 12),
         ],
+        // RGPD/EEE : point d'entrée "Choix pubs" quand l'UMP l'exige.
+        FutureBuilder<bool>(
+          future: _privacyFuture,
+          builder: (_, snap) {
+            if (snap.data != true) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Center(
+                child: TextButton(
+                  key: const Key('shopPrivacyButton'),
+                  onPressed: AdsConsent.showPrivacyOptions,
+                  child: Text(
+                    t(
+                      fr: 'Choix pubs et confidentialité',
+                      en: 'Ad choices & privacy',
+                      ar: 'خيارات الإعلانات والخصوصية',
+                    ),
+                    style: const TextStyle(
+                        color: AppColors.creamDim,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ],
     );
   }

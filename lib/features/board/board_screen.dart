@@ -733,27 +733,31 @@ class _BoardTrain extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 68,
-      height: 56,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.sun.withValues(alpha: 0.5),
-            blurRadius: 12,
+    // Cache raster isolé : le train (repositionné pendant le vol 750 ms)
+    // ne fait jamais repeindre le plateau statique (bas de gamme).
+    return RepaintBoundary(
+      child: Container(
+        width: 68,
+        height: 56,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.sun.withValues(alpha: 0.5),
+              blurRadius: 12,
+            ),
+          ],
+        ),
+        child: Transform.rotate(
+          angle: angle,
+          child: FittedBox(
+            fit: BoxFit.contain,
+            // 212 = largeur naturelle du CuteTrain (204) + marge anti-overflow.
+            child: SizedBox(
+                width: 212,
+                height: 90,
+                child: CuteTrain(mirrored: mirrored, skin: skin)),
           ),
-        ],
-      ),
-      child: Transform.rotate(
-        angle: angle,
-        child: FittedBox(
-          fit: BoxFit.contain,
-          // 212 = largeur naturelle du CuteTrain (204) + marge anti-overflow.
-          child: SizedBox(
-              width: 212,
-              height: 90,
-              child: CuteTrain(mirrored: mirrored, skin: skin)),
         ),
       ),
     );

@@ -137,8 +137,7 @@ void main() {
     expect(d.battlePassActive, isFalse);
   });
 
-  test('FakeAds : la question est refusée même au fake', () async {
-    final fake = FakeAdsService();
+  test('FakeAds : la question est refusée même au fake', () async {    final fake = FakeAdsService();
     expect(
       await fake.maybeShowInterstitial(AdPlacement.question),
       isFalse,
@@ -199,6 +198,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const Key('shopMessage')), findsOneWidget);
+    // Draine le timeout UMP interne (fake-async).
+    await tester.pump(const Duration(seconds: 6));
   });
 
   testWidgets('Boutique : remove_ads actif + skin à équiper', (tester) async {
@@ -234,6 +235,8 @@ void main() {
     await tester.tap(find.byKey(const Key('shopEquip_gold')));
     await tester.pump();
     expect(prefs.selectedSkin, 'gold');
+    // Draine le timeout UMP interne (fake-async).
+    await tester.pump(const Duration(seconds: 6));
   });
 
   testWidgets('Boutique : store indisponible → état propre', (tester) async {
@@ -266,5 +269,18 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(ads.placements, [AdPlacement.resultsSolo]);
     expect(find.byKey(const Key('resultsScreen')), findsOneWidget);
+  });
+
+  test('RGPD : sans consentement, aucune pub même après résultats', () async {
+    final gated = AdMobAdsService(
+      prefs: AppPrefs.inMemory(),
+      canRequestAds: () async => false,
+    );
+    expect(
+      await gated.maybeShowInterstitial(AdPlacement.resultsSolo),
+      isFalse,
+    );
+    expect(await gated.showRewarded(), isFalse);
+    expect(gated.interstitialsThisSession, 0);
   });
 }

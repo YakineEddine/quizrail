@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../../core/storage/app_prefs.dart';
+import 'consent_service.dart';
 import 'monetization_config.dart';
 import 'shop_providers.dart';
 
@@ -25,17 +26,25 @@ abstract class AdsService {
 }
 
 class AdMobAdsService implements AdsService {
-  AdMobAdsService({required this.prefs});
+  AdMobAdsService({required this.prefs, Future<bool> Function()? canRequestAds})
+      : _canRequestAds = canRequestAds ?? AdsConsent.canRequestAds;
 
   final AppPrefs prefs;
+
+  /// Garde RGPD injectable (UMP en prod, scriptable en tests).
+  final Future<bool> Function() _canRequestAds;
   int _sessionCount = 0;
 
-  /// À appeler une fois au démarrage (échec silencieux hors ligne).
+  /// À appeler une fois au démarrage (consentement UMP puis init SDK).
+  /// Échec silencieux hors ligne : le jeu reste 100 % jouable.
   static Future<void> init() async {
     try {
-      await MobileAds.instance.initialize().timeout(
-            const Duration(seconds: 10),
-          );
+      await AdsConsent.ensureInitialized();
+      if (await AdsConsent.canRequestAds()) {
+        await MobileAds.instance.initialize().timeout(
+              const Duration(seconds: 10),
+            );
+      }
     } catch (_) {
       // Pubs indisponibles : le jeu reste 100 % jouable.
     }
@@ -70,6 +79,14 @@ class AdMobAdsService implements AdsService {
 
   @override
   Future<bool> showRewarded() async {
+    // RGPD : aucune requête sans consentement valide.
+    try {
+      if (!await _canRequestAds().timeout(const Duration(seconds: 5))) {
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
     final ad = await _loadRewarded();
     if (ad == null) return false;
     final earned = Completer<bool>();
@@ -129,6 +146,14 @@ class AdMobAdsService implements AdsService {
   Future<bool> maybeShowInterstitial(AdPlacement placement) async {
     // Règle Google Play : jamais en pleine question (ni boutique).
     if (!isInterstitialPlacement(placement)) return false;
+    // RGPD : aucune requête sans consentement valide.
+    try {
+      if (!await _canRequestAds().timeout(const Duration(seconds: 5))) {
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
     if (!shouldShowInterstitial(
       removeAdsActive: prefs.removeAds,
