@@ -52,6 +52,8 @@ class GameTunnel {
     this.langCode = 'fr',
     required this.questions,
     this.createdAtMillis,
+    this.ratingAvg = 0,
+    this.ratingCount = 0,
   });
 
   final String id;
@@ -62,6 +64,11 @@ class GameTunnel {
   final String langCode;
   final List<GameQuestion> questions;
   final int? createdAtMillis;
+
+  /// Notation communautaire (agrégat serveur via rateTunnel, protégé
+  /// des clients par les rules). 0 avis → avg 0.
+  final double ratingAvg;
+  final int ratingCount;
 
   /// Même contrat que [CustomTunnel.isValid] : 9 questions, 3 par difficulté.
   bool get isValid {
@@ -110,6 +117,10 @@ class GameTunnel {
         'lang': langCode,
         'questions': questions.map((q) => q.toMap()).toList(),
         if (createdAtMillis != null) 'createdAt': createdAtMillis,
+        if (ratingCount > 0) ...{
+          'ratingAvg': ratingAvg,
+          'ratingCount': ratingCount,
+        },
       };
 
   factory GameTunnel.fromMap(String id, Map<String, Object?> map) {
@@ -126,7 +137,23 @@ class GameTunnel {
           .map((e) => GameQuestion.fromMap(
               e.map((k, v) => MapEntry(k.toString(), v))))
           .toList(),
-      createdAtMillis: (map['createdAt'] as num?)?.toInt(),
+      createdAtMillis: _readMillis(map['createdAt']),
+      ratingAvg: (map['ratingAvg'] as num?)?.toDouble() ?? 0,
+      ratingCount: (map['ratingCount'] as num?)?.toInt() ?? 0,
     );
+  }
+
+  /// Lit un millis : int en tests/cache, Timestamp Firestore en prod
+  /// (sans dépendre du plugin pour garder le modèle en pur Dart).
+  static int? _readMillis(Object? value) {
+    if (value is num) return value.toInt();
+    if (value == null) return null;
+    try {
+      final ms = (value as dynamic).millisecondsSinceEpoch as Object?;
+      if (ms is num) return ms.toInt();
+    } catch (_) {
+      // Format inconnu : pas de date.
+    }
+    return null;
   }
 }

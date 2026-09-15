@@ -12,6 +12,9 @@ import '../../core/widgets/game_button.dart';
 import '../../core/widgets/token_counter.dart';
 import '../board/board_screen.dart';
 import '../duel/duel_search_screen.dart';
+import '../party/party_home_screen.dart';
+import '../social/leaderboard_screen.dart';
+import '../social/marketplace_screen.dart';
 import '../tunnel/tunnel_editor_screen.dart';
 
 export '../../core/i18n/app_lang.dart';
@@ -128,6 +131,32 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
     await _refreshTokens();
+  }
+
+  Future<void> _openParty() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PartyHomeScreen(prefs: _prefs, lang: _lang),
+      ),
+    );
+    await _refreshTokens();
+  }
+
+  void _openLeaderboard() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LeaderboardScreen(lang: _lang),
+      ),
+    );
+  }
+
+  void _openMarketplace() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MarketplaceScreen(lang: _lang),
+      ),
+    );
   }
 
   /// Titre avec marque isolée en bidi : "QuizRail" reste un bloc LTR
@@ -279,6 +308,51 @@ class _HomeScreenState extends State<HomeScreen>
                           ar: 'مبارزة online'),
                       icon: Icons.sports_kabaddi_rounded,
                       onPressed: _openDuel,
+                    ),
+                    const SizedBox(height: 10),
+                    GameButton(
+                      key: const Key('partyButton'),
+                      variant: GameButtonVariant.secondary,
+                      label: _t(
+                          fr: 'Party entre amis',
+                          en: 'Party with friends',
+                          ar: 'حفلة مع الأصدقاء'),
+                      icon: Icons.groups_rounded,
+                      onPressed: _openParty,
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GameButton(
+                            key: const Key('leaderboardButton'),
+                            variant: GameButtonVariant.secondary,
+                            label: _t(
+                                fr: 'Records',
+                                en: 'Ranks',
+                                ar: 'الترتيب'),
+                            icon: Icons.leaderboard_rounded,
+                            height: 54,
+                            fontSize: 16,
+                            onPressed: _openLeaderboard,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: GameButton(
+                            key: const Key('marketplaceButton'),
+                            variant: GameButtonVariant.secondary,
+                            label: _t(
+                                fr: 'Marché',
+                                en: 'Market',
+                                ar: 'السوق'),
+                            icon: Icons.storefront_rounded,
+                            height: 54,
+                            fontSize: 16,
+                            onPressed: _openMarketplace,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     Text(

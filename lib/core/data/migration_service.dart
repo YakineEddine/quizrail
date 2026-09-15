@@ -19,6 +19,10 @@ class MigrationService {
     return local > cloud ? local : cloud;
   }
 
+  /// Pseudo repli déterministe (même convention que les fonctions).
+  static String _defaultDisplayName(String uid) =>
+      'Joueur ${uid.length >= 4 ? uid.substring(0, 4).toUpperCase() : uid}';
+
   static Future<bool> migrateIfNeeded({
     required AppPrefs prefs,
     required CustomTunnelStore customs,
@@ -37,6 +41,9 @@ class MigrationService {
         await userRef.set({
           'tokens': prefs.tokens,
           'lang': prefs.lang.code,
+          'displayName': _defaultDisplayName(uid),
+          'country': '--',
+          'friendIds': const [],
           'createdAt': FieldValue.serverTimestamp(),
           'migratedAt': FieldValue.serverTimestamp(),
         }).timeout(const Duration(seconds: 10));
@@ -50,6 +57,16 @@ class MigrationService {
         if (merged != cloudTokens) update['tokens'] = merged;
         if ((data['lang'] as String?) == null) {
           update['lang'] = prefs.lang.code;
+        }
+        // Backfill social : n'écrase jamais un pseudo/pays déjà choisi.
+        if ((data['displayName'] as String?) == null) {
+          update['displayName'] = _defaultDisplayName(uid);
+        }
+        if ((data['country'] as String?) == null) {
+          update['country'] = '--';
+        }
+        if (data['friendIds'] == null) {
+          update['friendIds'] = const [];
         }
         await userRef
             .set(update, SetOptions(merge: true))

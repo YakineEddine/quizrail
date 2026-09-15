@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/data/tunnel_repository.dart';
 import '../../core/i18n/app_lang.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/game_button.dart';
@@ -42,6 +43,7 @@ class _TunnelEditorScreenState extends State<TunnelEditorScreen> {
   bool _showErrors = false;
   bool _saving = false;
   bool _aiLoading = false;
+  bool _public = false;
   int _savedCount = 0;
 
   static const _difficulties = [
@@ -154,18 +156,59 @@ class _TunnelEditorScreenState extends State<TunnelEditorScreen> {
       _store ??= store;
       await store.add(tunnel);
       if (!mounted) return;
+      // Publication communautaire optionnelle (marché public).
+      if (_public) {
+        await _publish(tunnel);
+        if (!mounted) return;
+      } else {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(
+            content: Text(_t(
+              fr: 'Tunnel « ${tunnel.theme.trim()} » sauvegardé sur l\u2019appareil.',
+              en: 'Tunnel "${tunnel.theme.trim()}" saved on this device.',
+              ar: 'تم حفظ النفق "${tunnel.theme.trim()}" على هذا الجهاز.',
+            )),
+          ));
+      }
+      Navigator.of(context).pop(true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// Publie le tunnel sur le marché communautaire (isPublic = true).
+  /// Le brouillon local est toujours conservé.
+  Future<void> _publish(CustomTunnel tunnel) async {
+    try {
+      await TunnelRepository(local: _store ?? await CustomTunnelStore.load())
+          .publishTunnel(
+        tunnel,
+        imageBytes: _preview,
+        isPublic: true,
+        langCode: _lang.code,
+      );
+      if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(SnackBar(
           content: Text(_t(
-            fr: 'Tunnel « ${tunnel.theme.trim()} » sauvegardé sur l\u2019appareil.',
-            en: 'Tunnel "${tunnel.theme.trim()}" saved on this device.',
-            ar: 'تم حفظ النفق "${tunnel.theme.trim()}" على هذا الجهاز.',
+            fr: 'Publié sur le marché ! Les joueurs peuvent le noter.',
+            en: 'Published to the marketplace! Players can rate it.',
+            ar: 'تم النشر في السوق! يمكن للاعبين تقييمه.',
           )),
         ));
-      Navigator.of(context).pop(true);
-    } finally {
-      if (mounted) setState(() => _saving = false);
+    } on StateError catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(
+          content: Text(_t(
+            fr: 'Sauvegardé local. Publication échouée : ${e.message}',
+            en: 'Saved locally. Publish failed: ${e.message}',
+            ar: 'حُفظ محليًا. فشل النشر: ${e.message}',
+          )),
+        ));
     }
   }
 
@@ -488,6 +531,43 @@ class _TunnelEditorScreenState extends State<TunnelEditorScreen> {
                         ],
                       ),
                     ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Publication communautaire (marché public + notation).
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.midnight.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: AppColors.midnightLight, width: 1.5),
+                  ),
+                  child: SwitchListTile(
+                    key: const Key('tunnelPublicSwitch'),
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      _t(
+                          fr: 'Publier sur le marché',
+                          en: 'Publish to marketplace',
+                          ar: 'النشر في السوق'),
+                      style: const TextStyle(
+                          color: AppColors.cream,
+                          fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      _t(
+                          fr: 'Visible par tous, noté par étoiles.',
+                          en: 'Visible to all, star-rated.',
+                          ar: 'مرئي للجميع، بتقييم النجوم.'),
+                      style: const TextStyle(
+                          color: AppColors.creamDim, fontSize: 12),
+                    ),
+                    activeThumbColor: AppColors.sun,
+                    value: _public,
+                    onChanged: (v) =>
+                        setState(() => _public = v),
                   ),
                 ),
                 for (var s = 0; s < 3; s++) ...[

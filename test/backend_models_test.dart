@@ -33,6 +33,27 @@ void main() {
     final u = AppUser.fromMap('u2', {});
     expect(u.tokens, 120);
     expect(u.langCode, 'fr');
+    expect(u.displayName, '');
+    expect(u.country, '--');
+    expect(u.friendIds, isEmpty);
+    expect(u.label, 'Joueur u2');
+    expect(const AppUser(uid: 'abcdef').label, 'Joueur ABCD');
+  });
+
+  test('AppUser social roundtrip', () {
+    const u = AppUser(
+      uid: 'abcdef',
+      tokens: 300,
+      langCode: 'fr',
+      displayName: 'Zoe',
+      country: 'FR',
+      friendIds: ['u2', 'u3'],
+    );
+    final back = AppUser.fromMap('abcdef', u.toMap());
+    expect(back.displayName, 'Zoe');
+    expect(back.label, 'Zoe');
+    expect(back.country, 'FR');
+    expect(back.friendIds, ['u2', 'u3']);
   });
 
   test('GameTunnel pont local <-> cloud', () {

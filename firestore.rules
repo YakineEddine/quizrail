@@ -22,7 +22,12 @@ service cloud.firestore {
     match /tunnels/{tunnelId} {
       allow read: if true;
       allow create: if signedIn()
-        && request.resource.data.creatorId == request.auth.uid;
+        && request.resource.data.creatorId == request.auth.uid
+        // L'agrégat de notes est calculé par rateTunnel uniquement :
+        // interdit dès la création (pas de faux 5,0 à la publication).
+        && !('ratingSum' in request.resource.data)
+        && !('ratingCount' in request.resource.data)
+        && !('ratingAvg' in request.resource.data);
       // Le créateur peut tout modifier SAUF l'agrégat de notes
       // (ratingSum/Count/Avg : callable rateTunnel uniquement).
       allow update: if signedIn()

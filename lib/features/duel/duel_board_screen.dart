@@ -13,6 +13,7 @@ import '../../core/widgets/game_button.dart';
 import '../board/board_screen.dart' show BoardPainter, kTiles;
 import 'duel_providers.dart';
 import 'duel_results_screen.dart';
+import 'duel_service.dart';
 
 /// Plateau Duel : les deux trains sur la même voie, scores live (stream),
 /// question perso, pouvoirs (gel / x2 / vol), forfait et abandon.
@@ -49,6 +50,7 @@ class _DuelBoardScreenState extends ConsumerState<DuelBoardScreen> {
   bool _navigated = false;
   Timer? _uiTick;
   Timer? _heartbeat;
+  late final DuelService _service;
 
   String _t({required String fr, required String en, required String ar}) =>
       switch (widget.lang) {
@@ -60,6 +62,8 @@ class _DuelBoardScreenState extends ConsumerState<DuelBoardScreen> {
   @override
   void initState() {
     super.initState();
+    // Service figé ici : ref est interdit dans dispose().
+    _service = ref.read(duelServiceProvider);
     _presence(true);
     // Horloge UI (compte à rebours gel, bouton forfait) + heartbeat 10 s
     // (grâce forfait 30 s : jamais de faux forfait en jeu normal).
@@ -82,9 +86,8 @@ class _DuelBoardScreenState extends ConsumerState<DuelBoardScreen> {
 
   Future<void> _presence(bool connected) async {
     try {
-      await ref
-          .read(duelServiceProvider)
-          .setPresence(duelId: widget.duelId, connected: connected);
+      await _service.setPresence(
+          duelId: widget.duelId, connected: connected);
     } catch (_) {
       // Best-effort.
     }
