@@ -5,6 +5,9 @@ import { defineSecret } from "firebase-functions/params";
 
 // Duel temps réel : matchmaking, arbitrage, pouvoirs, forfait, revanche.
 export * from "./duel";
+// Party + social : rooms, classements, amis, notes, signalements.
+export * from "./party";
+export * from "./social";
 
 initializeApp();
 

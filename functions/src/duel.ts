@@ -6,6 +6,8 @@ import {
 } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 
+import { applyLeaderboardDirect, applyLeaderboardTx } from "./social";
+
 if (getApps().length === 0) initializeApp();
 
 // ---------------------------------------------------------------------------
@@ -45,8 +47,9 @@ interface BankEntry {
 }
 
 // Banque standard v1 — mêmes questions que le client (kQuestions).
-// Les RÉPONSES vivent aussi dans duels/{id}/secret (illisible clients).
-const DUEL_BANK: BankEntry[] = [
+// Exportée pour le mode Party. Les RÉPONSES vivent aussi dans
+// duels/{id}/secret (illisible clients).
+export const DUEL_BANK: BankEntry[] = [
   {
     prompt: {
       fr: "Capitale de la France ?",
@@ -413,6 +416,15 @@ export const submitDuelAnswer = onCall(
           },
           { merge: true }
         );
+        // Classements (serveur uniquement).
+        await applyLeaderboardTx(tx, uid, {
+          score: all[uid].score,
+          won: winnerUid === uid,
+        });
+        await applyLeaderboardTx(tx, oppUid, {
+          score: all[oppUid].score,
+          won: winnerUid === oppUid,
+        });
       }
       return {
         correct,
@@ -588,6 +600,14 @@ export const claimForfeit = onCall(
       },
       { merge: true }
     );
+    await applyLeaderboardDirect(uid, {
+      score: players[uid]?.score ?? 0,
+      won: true,
+    });
+    await applyLeaderboardDirect(oppUid, {
+      score: players[oppUid]?.score ?? 0,
+      won: false,
+    });
     return { winnerUid: uid, finishReason: "forfeit" };
   }
 );

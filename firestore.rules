@@ -23,8 +23,58 @@ service cloud.firestore {
       allow read: if true;
       allow create: if signedIn()
         && request.resource.data.creatorId == request.auth.uid;
-      allow update, delete: if signedIn()
+      // Le créateur peut tout modifier SAUF l'agrégat de notes
+      // (ratingSum/Count/Avg : callable rateTunnel uniquement).
+      allow update: if signedIn()
+        && resource.data.creatorId == request.auth.uid
+        && !('ratingSum' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('ratingCount' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('ratingAvg' in request.resource.data.diff(resource.data).affectedKeys());
+      allow delete: if signedIn()
         && resource.data.creatorId == request.auth.uid;
+    }
+
+    // Notes individuelles : écriture fonction uniquement, jamais lisibles
+    // (l'agrégat public vit sur le doc tunnel).
+    match /tunnels/{tunnelId}/ratings/{uid} {
+      allow read, write: if false;
+    }
+
+    // Signalements : écriture fonction uniquement, file admin consultée
+    // manuellement dans la console (status == 'pending').
+    match /reports/{reportId} {
+      allow read, write: if false;
+    }
+
+    // Classements : lecture connectée, écriture fonctions uniquement.
+    match /leaderboard/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Rooms Party : lecture participants uniquement, AUCUNE écriture
+    // client sur la room (tout passe par les callables host/joueurs).
+    match /rooms/{roomId} {
+      allow read: if signedIn()
+        && request.auth.uid in resource.data.playerIds;
+      allow create, update, delete: if false;
+
+      // Présence : chaque joueur ne touche que lastSeen/connected
+      // de SON propre doc (heartbeat 10 s, ~1 écriture/s pour 10 joueurs).
+      match /players/{uid} {
+        allow read: if signedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.playerIds;
+        allow update: if isOwner(uid)
+          && request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.playerIds
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['lastSeen', 'connected']);
+        allow create, delete: if false;
+      }
+
+      // Réponses de la room : jamais lisibles côté client.
+      match /secret/{docId} {
+        allow read, write: if false;
+      }
     }
 
     match /sessions/{sessionId} {
