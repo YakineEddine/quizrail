@@ -7,10 +7,12 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/game_button.dart';
 import 'custom_tunnel.dart';
 import 'custom_tunnel_store.dart';
+import 'tunnel_ai_service.dart';
 
-/// Création de tunnel custom Phase 1 :
+/// Création de tunnel custom :
 /// thème + 9 questions (3 par difficulté) + réponse exacte + image optionnelle.
-/// 100 % local (SharedPreferences JSON via [CustomTunnelStore]), zéro coût.
+/// Saisie manuelle (locale, zéro coût) ou génération IA via la Cloud Function
+/// `generateTunnel` quand le backend est configuré (quota 5/jour).
 class TunnelEditorScreen extends StatefulWidget {
   const TunnelEditorScreen({
     super.key,
@@ -39,6 +41,7 @@ class _TunnelEditorScreenState extends State<TunnelEditorScreen> {
   Uint8List? _preview;
   bool _showErrors = false;
   bool _saving = false;
+  bool _aiLoading = false;
   int _savedCount = 0;
 
   static const _difficulties = [
@@ -163,6 +166,60 @@ class _TunnelEditorScreenState extends State<TunnelEditorScreen> {
       Navigator.of(context).pop(true);
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// Remplit les 9 champs via la Cloud Function `generateTunnel`.
+  /// Le thème doit être saisi ; les champs existants sont écrasés.
+  Future<void> _generateWithAi() async {
+    if (_aiLoading) return;
+    if (_theme.text.trim().length < 2) {
+      setState(() => _showErrors = true);
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(
+          content: Text(_t(
+            fr: 'Saisis d\u2019abord un thème pour l\u2019IA.',
+            en: 'Enter a theme first for the AI.',
+            ar: 'أدخل موضوعًا أولًا للذكاء الاصطناعي.',
+          )),
+        ));
+      return;
+    }
+    setState(() => _aiLoading = true);
+    try {
+      final questions = await TunnelAiService().generate(
+        theme: _theme.text,
+        lang: _lang.code,
+      );
+      if (!mounted) return;
+      setState(() {
+        for (final s in [0, 1, 2]) {
+          final diff = TunnelDifficulty.values[s];
+          final group =
+              questions.where((q) => q.difficulty == diff).toList();
+          for (var k = 0; k < 3; k++) {
+            _prompts[s * 3 + k].text = group[k].prompt;
+            _answers[s * 3 + k].text = group[k].answer;
+          }
+        }
+      });
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(
+          content: Text(_t(
+            fr: '9 questions générées — relis avant de sauvegarder.',
+            en: '9 questions generated — review before saving.',
+            ar: 'تم توليد 9 أسئلة — راجعها قبل الحفظ.',
+          )),
+        ));
+    } on StateError catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _aiLoading = false);
     }
   }
 
@@ -378,6 +435,61 @@ class _TunnelEditorScreenState extends State<TunnelEditorScreen> {
                       ar: 'صيغ المعرض المعتادة، تبقى على الجهاز.'),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                const SizedBox(height: 12),
+                // Génération IA (Cloud Function, quota 5/jour).
+                GestureDetector(
+                  key: const Key('tunnelAiButton'),
+                  onTap: _aiLoading ? null : _generateWithAi,
+                  behavior: HitTestBehavior.opaque,
+                  child: Opacity(
+                    opacity: _aiLoading ? 0.6 : 1.0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        gradient: AppColors.goldGradient,
+                        borderRadius: BorderRadius.circular(14),
+                        border:
+                            Border.all(color: AppColors.ink, width: 2),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (_aiLoading)
+                            const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: AppColors.ink,
+                              ),
+                            )
+                          else
+                            const Icon(Icons.auto_awesome_rounded,
+                                color: AppColors.ink, size: 20),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              _aiLoading
+                                  ? _t(
+                                      fr: 'Génération en cours…',
+                                      en: 'Generating…',
+                                      ar: 'جارٍ التوليد…')
+                                  : _t(
+                                      fr: 'Générer les 9 questions avec l\u2019IA',
+                                      en: 'Generate 9 questions with AI',
+                                      ar: 'توليد الأسئلة التسعة بالذكاء الاصطناعي'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  color: AppColors.ink,
+                                  fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
                 for (var s = 0; s < 3; s++) ...[
                   const SizedBox(height: 16),
                   _SectionTitle(

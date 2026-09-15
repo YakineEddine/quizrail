@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../core/data/user_repository.dart';
 import '../../core/i18n/app_lang.dart';
 import '../../core/storage/app_prefs.dart';
 import '../../core/theme/app_colors.dart';
@@ -73,12 +76,19 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _addTokens() {
     setState(() => _tokens += 10);
-    _prefs?.setTokens(_tokens);
+    final p = _prefs;
+    if (p == null) return;
+    p.setTokens(_tokens);
+    // Miroir cloud best-effort (offline → ignoré, local fait foi).
+    unawaited(UserRepository(prefs: p).pushTokens(_tokens));
   }
 
   void _setLang(AppLang lang) {
     setState(() => _lang = lang);
-    _prefs?.setLang(lang);
+    final p = _prefs;
+    if (p == null) return;
+    p.setLang(lang);
+    unawaited(UserRepository(prefs: p).pushLang(lang));
   }
 
   Future<void> _refreshTokens() async {

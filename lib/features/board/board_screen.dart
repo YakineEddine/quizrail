@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+
+import '../../core/data/user_repository.dart';
 
 import '../../core/i18n/app_lang.dart';
 import '../../core/storage/app_prefs.dart';
@@ -243,8 +246,13 @@ class _BoardScreenState extends State<BoardScreen>
   int get _last => kTiles.length - 1;
   bool get _finished => _pos >= _last || _answered >= _maxQuestions;
 
-  Future<void> _persist() async =>
-      widget.prefs?.setTokens(_tokens);
+  Future<void> _persist() async {
+    final p = widget.prefs;
+    if (p == null) return;
+    await p.setTokens(_tokens);
+    // Miroir cloud best-effort (offline → ignoré).
+    unawaited(UserRepository(prefs: p).pushTokens(_tokens));
+  }
 
   /// Échantillonne [path] (waypoints normalisés) à [t] 0..1 en suivant
   /// la longueur des segments — le train reste sur les rails, sans couper.

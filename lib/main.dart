@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
+import 'core/data/backend.dart';
+import 'core/data/migration_service.dart';
+import 'core/data/user_repository.dart';
 import 'core/storage/app_prefs.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/home/home_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
+import 'features/tunnel/custom_tunnel_store.dart';
 
 // Re-export pour compatibilité (tests / futurs écrans Phase 1).
 export 'features/home/home_screen.dart';
@@ -43,9 +47,30 @@ class _BootGate extends StatefulWidget {
 }
 
 class _BootGateState extends State<_BootGate> {
-  late final Future<AppPrefs> _future = widget.prefsOverride != null
-      ? Future.value(widget.prefsOverride)
-      : AppPrefs.load();
+  late final Future<AppPrefs> _future = _boot();
+
+  /// Démarrage : prefs locales → backend (instant offline si Firebase
+  /// non configuré) → migration one-shot → pull cloud vers local.
+  /// Tout échec réseau est silencieux : l'app reste 100 % jouable.
+  Future<AppPrefs> _boot() async {
+    final prefs =
+        widget.prefsOverride ?? await AppPrefs.load();
+    if (widget.prefsOverride != null) return prefs;
+    try {
+      await Backend.instance
+          .boot()
+          .timeout(const Duration(seconds: 15));
+      final customs = await CustomTunnelStore.load();
+      await MigrationService.migrateIfNeeded(prefs: prefs, customs: customs)
+          .timeout(const Duration(seconds: 30));
+      await UserRepository(prefs: prefs)
+          .pullToLocal()
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      // Repli local : progression SharedPreferences inchangée.
+    }
+    return prefs;
+  }
 
   @override
   Widget build(BuildContext context) {
