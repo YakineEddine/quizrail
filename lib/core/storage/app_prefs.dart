@@ -8,12 +8,14 @@ abstract final class PrefKeys {
   static const walletTokens = 'wallet_tokens';
   static const settingsLang = 'settings_lang';
   static const hasSeenOnboarding = 'hasSeenOnboarding';
+  static const migratedToCloud = 'migrated_to_cloud_v1';
 }
 
 /// Façade SharedPreferences branchée avant que l'état ne se complexifie.
 /// - wallet_tokens : portefeuille de jetons partagé (accueil / plateau).
 /// - settings_lang : 'fr' | 'en' | 'ar'.
 /// - hasSeenOnboarding : flag d'onboarding vu.
+/// - migrated_to_cloud_v1 : migration one-shot vers users/{uid} effectuée.
 /// Repli mémoire si le plugin est indisponible (tests widget sans mock).
 class AppPrefs {
   AppPrefs._(this._prefs, this._mem);
@@ -103,6 +105,24 @@ class AppPrefs {
       await p.setBool(PrefKeys.hasSeenOnboarding, value);
     } else {
       _mem[PrefKeys.hasSeenOnboarding] = value;
+    }
+  }
+
+  /// Migration cloud effectuée (one-shot, voir MigrationService).
+  bool get cloudMigrated {
+    final p = _prefs;
+    if (p != null) {
+      return p.getBool(PrefKeys.migratedToCloud) ?? false;
+    }
+    return _mem[PrefKeys.migratedToCloud] as bool? ?? false;
+  }
+
+  Future<void> setCloudMigrated(bool value) async {
+    final p = _prefs;
+    if (p != null) {
+      await p.setBool(PrefKeys.migratedToCloud, value);
+    } else {
+      _mem[PrefKeys.migratedToCloud] = value;
     }
   }
 }
