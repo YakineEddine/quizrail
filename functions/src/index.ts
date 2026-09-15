@@ -8,6 +8,8 @@ export * from "./duel";
 // Party + social : rooms, classements, amis, notes, signalements.
 export * from "./party";
 export * from "./social";
+// Monétisation : vérification serveur des achats avant tout crédit.
+export * from "./monetization";
 
 initializeApp();
 

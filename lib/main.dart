@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'dart:async';
+
 import 'core/data/backend.dart';
 import 'core/data/migration_service.dart';
 import 'core/data/user_repository.dart';
@@ -9,6 +11,7 @@ import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/home/home_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
+import 'features/shop/ads_service.dart';
 import 'features/tunnel/custom_tunnel_store.dart';
 
 // Re-export pour compatibilité (tests / futurs écrans Phase 1).
@@ -59,6 +62,8 @@ class _BootGateState extends State<_BootGate> {
     final prefs =
         widget.prefsOverride ?? await AppPrefs.load();
     if (widget.prefsOverride != null) return prefs;
+    // SDK pubs en tâche de fond : jamais bloquant, échec silencieux.
+    unawaited(AdMobAdsService.init());
     try {
       await Backend.instance
           .boot()

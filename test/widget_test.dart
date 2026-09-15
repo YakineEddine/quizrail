@@ -61,14 +61,20 @@ void main() {
     expect(find.byKey(const Key('trainAnimation')), findsOneWidget);
   });
 
-  testWidgets('Bouton +10 incrémente les jetons', (tester) async {
-    final prefs = await _pumpApp(tester);
+  testWidgets('Bouton + ouvre la boutique (plus de +10 gratuits)',
+      (tester) async {
+    await _pumpApp(tester);
 
     await tester.tap(find.byKey(const Key('addTokensButton')));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('130'), findsOneWidget);
-    expect(prefs.tokens, 130);
+    // La boutique s'ouvre ; sans store natif en test elle affiche
+    // l'état indisponible, sans crasher. Le pump de 9 s draine le
+    // timeout interne de détection du store (fake-async).
+    expect(find.byKey(const Key('shopScreen')), findsOneWidget);
+    await tester.pump(const Duration(seconds: 9));
+    expect(find.byKey(const Key('shopUnavailable')), findsOneWidget);
   });
 
   testWidgets('Passage en EN change les libellés', (tester) async {

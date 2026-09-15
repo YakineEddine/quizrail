@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../../features/shop/monetization_config.dart'
+    show trainSkinPalettes;
 
 /// Rails stylisés QuizRail : traverses bonbon + rails cyan à contour cartoon.
 /// Remplace les traits gris par une voie de plateau de jeu.
@@ -87,26 +89,38 @@ typedef RailsPainter = GameRailsPainter;
 
 /// Petit train sympathique et identifiable : loco avec visage + 2 wagons.
 /// 100 % widgets (pas d'emoji, pas d'Icon.train gris).
+/// [skin] reteinte la loco (classique gratuit, autres via la boutique).
 class CuteTrain extends StatelessWidget {
-  const CuteTrain({super.key, this.mirrored = false});
+  const CuteTrain({super.key, this.mirrored = false, this.skin = 'classic'});
 
   final bool mirrored;
+  final String skin;
 
   @override
   Widget build(BuildContext context) {
-    final train = const Row(
+    final palettes = trainSkinPalettes(
+      classicCab: AppColors.skyPop,
+      classicRoof: AppColors.sun,
+      classicChimney: AppColors.sun,
+      gold: AppColors.sun,
+      pink: AppColors.pinkPop,
+      mint: AppColors.mintPop,
+      sky: AppColors.skyPop,
+    );
+    final pal = palettes[skin] ?? palettes['classic']!;
+    final train = Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        _Locomotive(),
-        _Connector(),
-        _Wagon(
+        _Locomotive(cab: pal.cab, roof: pal.roof, chimneyCap: pal.chimney),
+        const _Connector(),
+        const _Wagon(
           body: AppColors.mintPop,
           stripe: AppColors.ink,
           icon: Icons.quiz_rounded,
         ),
-        _Connector(),
-        _Wagon(
+        const _Connector(),
+        const _Wagon(
           body: AppColors.violetPop,
           stripe: AppColors.sun,
           icon: Icons.people_alt_rounded,
@@ -136,7 +150,15 @@ class _Connector extends StatelessWidget {
 }
 
 class _Locomotive extends StatelessWidget {
-  const _Locomotive();
+  const _Locomotive({
+    required this.cab,
+    required this.roof,
+    required this.chimneyCap,
+  });
+
+  final Color cab;
+  final Color roof;
+  final Color chimneyCap;
 
   @override
   Widget build(BuildContext context) {
@@ -167,7 +189,7 @@ class _Locomotive extends StatelessWidget {
               width: 22,
               height: 8,
               decoration: BoxDecoration(
-                color: AppColors.sun,
+                color: chimneyCap,
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(color: AppColors.ink, width: 2),
               ),
@@ -181,7 +203,7 @@ class _Locomotive extends StatelessWidget {
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: AppColors.skyPop,
+                color: cab,
                 borderRadius: BorderRadius.circular(9),
                 border: Border.all(color: AppColors.ink, width: 2.5),
               ),
@@ -206,7 +228,7 @@ class _Locomotive extends StatelessWidget {
               width: 40,
               height: 9,
               decoration: BoxDecoration(
-                color: AppColors.sun,
+                color: roof,
                 borderRadius: BorderRadius.circular(5),
                 border: Border.all(color: AppColors.ink, width: 2),
               ),

@@ -3,6 +3,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 
 import { DUEL_BANK } from "./duel";
+import { isPassActive } from "./monetization";
 import { applyLeaderboardDirect } from "./social";
 
 if (getApps().length === 0) initializeApp();
@@ -398,7 +399,10 @@ export const submitPartyAnswer = onCall(
         lastSeen: now,
       }, { merge: true });
       if (correct) {
-        tx.set(db.doc(`users/${uid}`), { tokens: FieldValue.increment(TOKEN_AWARD) }, { merge: true });
+        tx.set(db.doc(`users/${uid}`), { tokens: FieldValue.increment(
+          // Battle pass : jetons doublés (droit lu côté serveur).
+          (await isPassActive(tx, uid)) ? TOKEN_AWARD * 2 : TOKEN_AWARD
+        ) }, { merge: true });
       }
       return { correct, gained, score: ((me.score as number | undefined) ?? 0) + gained, finished };
     });

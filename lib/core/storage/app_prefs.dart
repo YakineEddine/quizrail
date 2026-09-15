@@ -9,6 +9,11 @@ abstract final class PrefKeys {
   static const settingsLang = 'settings_lang';
   static const hasSeenOnboarding = 'hasSeenOnboarding';
   static const migratedToCloud = 'migrated_to_cloud_v1';
+  static const removeAds = 'monet_remove_ads';
+  static const battlePass = 'monet_battle_pass';
+  static const ownedSkins = 'monet_owned_skins';
+  static const selectedSkin = 'monet_selected_skin';
+  static const lastInterstitialMs = 'monet_last_interstitial_ms';
 }
 
 /// Façade SharedPreferences branchée avant que l'état ne se complexifie.
@@ -123,6 +128,87 @@ class AppPrefs {
       await p.setBool(PrefKeys.migratedToCloud, value);
     } else {
       _mem[PrefKeys.migratedToCloud] = value;
+    }
+  }
+
+  // -- Monétisation (miroir local des droits serveurs) ----------------------
+  // Écrits uniquement après validation serveur (boutique) ou lecture des
+  // droits (entitlements). Jamais de crédit local direct hors gains de jeu.
+
+  bool get removeAds {
+    final p = _prefs;
+    if (p != null) return p.getBool(PrefKeys.removeAds) ?? false;
+    return _mem[PrefKeys.removeAds] as bool? ?? false;
+  }
+
+  Future<void> setRemoveAds(bool value) async {
+    final p = _prefs;
+    if (p != null) {
+      await p.setBool(PrefKeys.removeAds, value);
+    } else {
+      _mem[PrefKeys.removeAds] = value;
+    }
+  }
+
+  bool get battlePassActive {
+    final p = _prefs;
+    if (p != null) return p.getBool(PrefKeys.battlePass) ?? false;
+    return _mem[PrefKeys.battlePass] as bool? ?? false;
+  }
+
+  Future<void> setBattlePass(bool value) async {
+    final p = _prefs;
+    if (p != null) {
+      await p.setBool(PrefKeys.battlePass, value);
+    } else {
+      _mem[PrefKeys.battlePass] = value;
+    }
+  }
+
+  List<String> get ownedSkins {
+    final p = _prefs;
+    if (p != null) return p.getStringList(PrefKeys.ownedSkins) ?? const [];
+    final raw = _mem[PrefKeys.ownedSkins];
+    if (raw is List) return raw.map((e) => e.toString()).toList();
+    return const [];
+  }
+
+  Future<void> setOwnedSkins(List<String> value) async {
+    final p = _prefs;
+    if (p != null) {
+      await p.setStringList(PrefKeys.ownedSkins, value);
+    } else {
+      _mem[PrefKeys.ownedSkins] = value;
+    }
+  }
+
+  String get selectedSkin {
+    final p = _prefs;
+    if (p != null) return p.getString(PrefKeys.selectedSkin) ?? 'classic';
+    return _mem[PrefKeys.selectedSkin] as String? ?? 'classic';
+  }
+
+  Future<void> setSelectedSkin(String value) async {
+    final p = _prefs;
+    if (p != null) {
+      await p.setString(PrefKeys.selectedSkin, value);
+    } else {
+      _mem[PrefKeys.selectedSkin] = value;
+    }
+  }
+
+  int? get lastInterstitialMs {
+    final p = _prefs;
+    if (p != null) return p.getInt(PrefKeys.lastInterstitialMs);
+    return _mem[PrefKeys.lastInterstitialMs] as int?;
+  }
+
+  Future<void> setLastInterstitialMs(int value) async {
+    final p = _prefs;
+    if (p != null) {
+      await p.setInt(PrefKeys.lastInterstitialMs, value);
+    } else {
+      _mem[PrefKeys.lastInterstitialMs] = value;
     }
   }
 }

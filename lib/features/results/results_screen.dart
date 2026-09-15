@@ -7,9 +7,11 @@ import '../../core/widgets/game_button.dart';
 import '../../core/widgets/token_counter.dart';
 import '../board/board_screen.dart';
 import '../home/home_screen.dart';
+import '../shop/ads_service.dart';
+import '../shop/monetization_config.dart';
 
 /// Résultats de partie : score, meilleure série, jetons, wagon + Rejouer/Accueil.
-class ResultsScreen extends StatelessWidget {
+class ResultsScreen extends StatefulWidget {
   const ResultsScreen({
     super.key,
     this.prefs,
@@ -31,16 +33,38 @@ class ResultsScreen extends StatelessWidget {
   final int position;
   final int totalTiles;
 
+  @override
+  State<ResultsScreen> createState() => _ResultsScreenState();
+}
+
+class _ResultsScreenState extends State<ResultsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Interstitielle APRÈS les résultats (jamais en pleine question),
+    // cappée et coupée par remove_ads — best-effort silencieux.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) maybeShowResultsAd(context, AdPlacement.resultsSolo);
+    });
+  }
+
   String _t({required String fr, required String en, required String ar}) =>
-      switch (lang) { AppLang.fr => fr, AppLang.en => en, AppLang.ar => ar };
+      switch (widget.lang) {
+        AppLang.fr => fr,
+        AppLang.en => en,
+        AppLang.ar => ar
+      };
 
   @override
   Widget build(BuildContext context) {
-    final progress =
-        totalTiles <= 1 ? 0.0 : (position / (totalTiles - 1)).clamp(0.0, 1.0);
+    final progress = widget.totalTiles <= 1
+        ? 0.0
+        : (widget.position / (widget.totalTiles - 1))
+            .clamp(0.0, 1.0);
     final pct = (progress * 100).round();
     return Directionality(
-      textDirection: lang.isRtl ? TextDirection.rtl : TextDirection.ltr,
+      textDirection:
+          widget.lang.isRtl ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         key: const Key('resultsScreen'),
         backgroundColor: AppColors.deepSpace,
@@ -94,7 +118,7 @@ class ResultsScreen extends StatelessWidget {
                       child: _ResultStat(
                           label: _t(
                               fr: 'Score', en: 'Score', ar: 'النقاط'),
-                          value: '$score',
+                          value: '${widget.score}',
                           color: AppColors.pinkPop),
                     ),
                     const SizedBox(width: 10),
@@ -104,7 +128,7 @@ class ResultsScreen extends StatelessWidget {
                               fr: 'Meilleure série',
                               en: 'Best streak',
                               ar: 'أفضل سلسلة'),
-                          value: '$bestStreak',
+                          value: '${widget.bestStreak}',
                           color: AppColors.skyPop),
                     ),
                   ],
@@ -118,7 +142,7 @@ class ResultsScreen extends StatelessWidget {
                               fr: 'Jetons gagnés',
                               en: 'Tokens earned',
                               ar: 'رموز مكتسبة'),
-                          value: '+$tokensEarned',
+                          value: '+${widget.tokensEarned}',
                           color: AppColors.sun),
                     ),
                     const SizedBox(width: 10),
@@ -152,9 +176,9 @@ class ResultsScreen extends StatelessWidget {
                           Expanded(
                             child: Text(
                               _t(
-                                  fr: 'Progression : case ${position + 1}/$totalTiles',
-                                  en: 'Progress: tile ${position + 1}/$totalTiles',
-                                  ar: 'التقدم: خانة ${position + 1}/$totalTiles'),
+                               fr: 'Progression : case ${widget.position + 1}/${widget.totalTiles}',
+                                   en: 'Progress: tile ${widget.position + 1}/${widget.totalTiles}',
+                                   ar: 'التقدم: خانة ${widget.position + 1}/${widget.totalTiles}'),
                               softWrap: true,
                               style: Theme.of(context).textTheme.titleSmall,
                             ),
@@ -192,9 +216,9 @@ class ResultsScreen extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(
                       _t(
-                          fr: 'Portefeuille : $walletTokens jetons',
-                          en: 'Wallet: $walletTokens tokens',
-                          ar: 'المحفظة: $walletTokens رموز'),
+                           fr: 'Portefeuille : ${widget.walletTokens} jetons',
+                           en: 'Wallet: ${widget.walletTokens} tokens',
+                           ar: 'المحفظة: ${widget.walletTokens} رموز'),
                       style: AppTypography.tokenCount(size: 18),
                     ),
                   ],
@@ -209,7 +233,7 @@ class ResultsScreen extends StatelessWidget {
                       Navigator.of(context).pushReplacement(
                     MaterialPageRoute(
                       builder: (_) =>
-                          BoardScreen(prefs: prefs, lang: lang),
+                          BoardScreen(prefs: widget.prefs, lang: widget.lang),
                     ),
                   ),
                 ),
@@ -223,7 +247,7 @@ class ResultsScreen extends StatelessWidget {
                   onPressed: () =>
                       Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute(
-                      builder: (_) => HomeScreen(prefs: prefs),
+                      builder: (_) => HomeScreen(prefs: widget.prefs),
                     ),
                     (_) => false,
                   ),

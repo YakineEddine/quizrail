@@ -7,6 +7,8 @@ import '../../core/models/party.dart';
 import '../../core/storage/app_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/game_button.dart';
+import '../shop/ads_service.dart';
+import '../shop/monetization_config.dart';
 import 'party_providers.dart';
 
 /// Résultats Party : gagnant + tableau, puis sortie.
@@ -31,6 +33,16 @@ class PartyResultsScreen extends ConsumerStatefulWidget {
 
 class _PartyResultsScreenState extends ConsumerState<PartyResultsScreen> {
   late final String _uid = widget.uid ?? Backend.instance.uid ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    // Interstitielle APRÈS les résultats (jamais en pleine question),
+    // cappée et coupée par remove_ads — best-effort silencieux.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) maybeShowResultsAd(context, AdPlacement.resultsParty);
+    });
+  }
 
   String _t({required String fr, required String en, required String ar}) =>
       switch (widget.lang) {

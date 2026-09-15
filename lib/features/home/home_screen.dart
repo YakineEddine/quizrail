@@ -3,8 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/data/user_repository.dart';
-import '../../core/i18n/app_lang.dart';
-import '../../core/storage/app_prefs.dart';
+import '../../core/i18n/app_lang.dart';import '../../core/storage/app_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/cute_train.dart';
@@ -13,6 +12,7 @@ import '../../core/widgets/token_counter.dart';
 import '../board/board_screen.dart';
 import '../duel/duel_search_screen.dart';
 import '../party/party_home_screen.dart';
+import '../shop/shop_screen.dart';
 import '../social/leaderboard_screen.dart';
 import '../social/marketplace_screen.dart';
 import '../tunnel/tunnel_editor_screen.dart';
@@ -78,13 +78,18 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  void _addTokens() {
-    setState(() => _tokens += 10);
-    final p = _prefs;
-    if (p == null) return;
-    p.setTokens(_tokens);
-    // Miroir cloud best-effort (offline → ignoré, local fait foi).
-    unawaited(UserRepository(prefs: p).pushTokens(_tokens));
+  void _openShop() {
+    _openShopScreen();
+  }
+
+  Future<void> _openShopScreen() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ShopScreen(prefs: _prefs, lang: _lang),
+      ),
+    );
+    await _refreshTokens();
   }
 
   void _setLang(AppLang lang) {
@@ -247,12 +252,14 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ),
                     const SizedBox(height: 18),
-                    // Compteur de jetons animé
+                    // Compteur de jetons animé (+ ouvre la boutique :
+                    // les jetons gratuits illimités sont remplacés par les
+                    // packs, la pub récompensée et les gains de jeu).
                     TokenCounter(
                       tokens: _tokens,
                       label: _t(fr: 'Jetons', en: 'Tokens', ar: 'رموز'),
                       countKey: const Key('tokenCount'),
-                      onAdd: _addTokens,
+                      onAdd: _openShop,
                     ),
                     const SizedBox(height: 16),
                     // Scène du train

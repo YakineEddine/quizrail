@@ -9,6 +9,8 @@ import '../../core/models/game_duel.dart';
 import '../../core/storage/app_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/game_button.dart';
+import '../shop/ads_service.dart';
+import '../shop/monetization_config.dart';
 import 'duel_board_screen.dart';
 import 'duel_providers.dart';
 import 'duel_search_screen.dart';
@@ -37,6 +39,16 @@ class _DuelResultsScreenState extends ConsumerState<DuelResultsScreen> {
   Timer? _rematchTimer;
   bool _rematchAsked = false;
   bool _navigated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Interstitielle APRÈS les résultats (jamais en pleine question),
+    // cappée et coupée par remove_ads — best-effort silencieux.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) maybeShowResultsAd(context, AdPlacement.resultsDuel);
+    });
+  }
 
   String _t({required String fr, required String en, required String ar}) =>
       switch (widget.lang) {

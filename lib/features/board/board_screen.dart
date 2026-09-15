@@ -12,6 +12,8 @@ import '../../core/widgets/cute_train.dart';
 import '../../core/widgets/game_button.dart';
 import '../../core/widgets/token_counter.dart';
 import '../results/results_screen.dart';
+import '../shop/ads_service.dart';
+import '../shop/monetization_config.dart';
 import 'questions.dart';
 
 enum TileType { start, normal, bonus, trap, shortcut, finish }
@@ -357,6 +359,9 @@ class _BoardScreenState extends State<BoardScreen>
           _persist();
           return true;
         },
+        // Pub récompensée à l'initiative du joueur : un indice gratuit
+        // quand il n'a plus de jetons (jamais d'interstitielle ici).
+        onFreeHintAd: () => showRewardedAd(context),
         onCorrect: () => _onCorrect(),
         onWrong: (answer) => _onWrong(answer),
       ),
@@ -368,8 +373,14 @@ class _BoardScreenState extends State<BoardScreen>
     final tile = kTiles[base].type;
     final target =
         (tile == TileType.shortcut ? base + 2 : base).clamp(0, _last);
-    var gain = 10;
-    if (tile == TileType.bonus) gain += 10;
+    // Battle pass : gains de jetons doublés (droit serveur en miroir local).
+    final pass = widget.prefs?.battlePassActive ?? false;
+    var gain = MonetizationConfig.applyPassMultiplier(10,
+        battlePassActive: pass);
+    if (tile == TileType.bonus) {
+      gain += MonetizationConfig.applyPassMultiplier(10,
+          battlePassActive: pass);
+    }
     if (tile == TileType.trap) gain -= 5;
     setState(() {
       _score += 100;
@@ -381,9 +392,13 @@ class _BoardScreenState extends State<BoardScreen>
       _answered += 1;
     });
     _persist();
+    final bonusGain = MonetizationConfig.applyPassMultiplier(10,
+        battlePassActive: pass);
     final msg = switch (tile) {
-      TileType.bonus =>
-        _t(fr: 'Bonus ! +10 jetons', en: 'Bonus! +10 tokens', ar: 'مكافأة! +10 رموز'),
+      TileType.bonus => _t(
+          fr: 'Bonus ! +$bonusGain jetons',
+          en: 'Bonus! +$bonusGain tokens',
+          ar: 'مكافأة! +$bonusGain رموز'),
       TileType.trap =>
         _t(fr: 'Piège… −5 jetons', en: 'Trap… −5 tokens', ar: 'فخ… −5 رموز'),
       TileType.shortcut =>
@@ -640,6 +655,7 @@ class _BoardScreenState extends State<BoardScreen>
                             child: _BoardTrain(
                               mirrored: _trainMirrored,
                               angle: lean,
+                              skin: widget.prefs?.selectedSkin ?? 'classic',
                             ),
                           ),
                         ],
@@ -709,10 +725,11 @@ class _BoardScreenState extends State<BoardScreen>
 }
 
 class _BoardTrain extends StatelessWidget {
-  const _BoardTrain({this.mirrored = false, this.angle = 0});
+  const _BoardTrain({this.mirrored = false, this.angle = 0, this.skin = 'classic'});
 
   final bool mirrored;
   final double angle;
+  final String skin;
 
   @override
   Widget build(BuildContext context) {
@@ -734,7 +751,9 @@ class _BoardTrain extends StatelessWidget {
           fit: BoxFit.contain,
           // 212 = largeur naturelle du CuteTrain (204) + marge anti-overflow.
           child: SizedBox(
-              width: 212, height: 90, child: CuteTrain(mirrored: mirrored)),
+              width: 212,
+              height: 90,
+              child: CuteTrain(mirrored: mirrored, skin: skin)),
         ),
       ),
     );
@@ -883,6 +902,7 @@ class QuestionSheet extends StatefulWidget {
     required this.lang,
     required this.tokens,
     required this.onSpend,
+    this.onFreeHintAd,
     required this.onCorrect,
     required this.onWrong,
   });
@@ -891,6 +911,7 @@ class QuestionSheet extends StatefulWidget {
   final AppLang lang;
   final int tokens;
   final bool Function(int cost) onSpend;
+  final Future<bool> Function()? onFreeHintAd;
   final VoidCallback onCorrect;
   final ValueChanged<String> onWrong;
 
@@ -903,6 +924,7 @@ class _QuestionSheetState extends State<QuestionSheet> {
   bool _letter = false;
   bool _revealed = false;
   String? _error;
+  bool _freeHintBusy = false;
   // Vrai uniquement après une tentative de validation : le message
   // d'erreur ne doit jamais apparaître à l'ouverture de la question.
   bool _attempted = false;
@@ -923,8 +945,35 @@ class _QuestionSheetState extends State<QuestionSheet> {
         AppLang.ar => ar
       };
 
-  void _submit() {
-    setState(() => _attempted = true);
+  /// Indice gratuit via pub récompensée (choix du joueur) : 1re lettre
+  /// d'abord, puis révélation si déjà obtenue.
+  Future<void> _freeHint() async {
+    final earn = widget.onFreeHintAd;
+    if (earn == null || _freeHintBusy) return;
+    setState(() => _freeHintBusy = true);
+    try {
+      if (await earn()) {
+        setState(() {
+          if (!_letter) {
+            _letter = true;
+          } else {
+            _revealed = true;
+          }
+          _error = null;
+        });
+      } else if (mounted) {
+        setState(() => _error = _t(
+          fr: 'Pub non terminée, aucun indice.',
+          en: 'Ad not finished, no hint.',
+          ar: 'لم يكتمل الإعلان، لا تلميح.',
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _freeHintBusy = false);
+    }
+  }
+
+  void _submit() {    setState(() => _attempted = true);
     final ok = widget.question.check(_controller.text, widget.lang);
     if (ok) {
       Navigator.of(context).pop();
@@ -1104,6 +1153,49 @@ class _QuestionSheetState extends State<QuestionSheet> {
               ],
             ),
             const SizedBox(height: 12),
+            // Plus de jetons ? Indice gratuit contre une pub vidéo
+            // (récompensée = choix du joueur, autorisée à tout moment).
+            if (widget.onFreeHintAd != null &&
+                widget.tokens < letterCost &&
+                !_letter)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: GestureDetector(
+                  key: const Key('freeHintButton'),
+                  onTap: _freeHintBusy ? null : _freeHint,
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.midnightLight.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                          color: AppColors.mintPop, width: 1.5),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.play_circle_rounded,
+                            size: 20, color: AppColors.mintPop),
+                        const SizedBox(width: 8),
+                        Text(
+                          _freeHintBusy
+                              ? '…'
+                              : _t(
+                                  fr: 'Indice gratuit (pub)',
+                                  en: 'Free hint (ad)',
+                                  ar: 'تلميح مجاني (إعلان)'),
+                          style: const TextStyle(
+                              color: AppColors.cream,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             GameButton(
               key: const Key('submitAnswerButton'),
               label: _t(

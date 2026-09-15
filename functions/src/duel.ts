@@ -7,6 +7,7 @@ import {
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 
 import { applyLeaderboardDirect, applyLeaderboardTx } from "./social";
+import { isPassActive } from "./monetization";
 
 if (getApps().length === 0) initializeApp();
 
@@ -360,9 +361,12 @@ export const submitDuelAnswer = onCall(
         if (now < me.doubleUntil) gained *= 2;
         score += gained;
         correctCount += 1;
+        // Battle pass : jetons doublés (droit lu côté serveur, jamais
+        // depuis le client). Le portefeuille local converge par merge max.
+        const pass = await isPassActive(tx, uid);
         tx.set(
           db.doc(`users/${uid}`),
-          { tokens: FieldValue.increment(TOKEN_AWARD) },
+          { tokens: FieldValue.increment(pass ? TOKEN_AWARD * 2 : TOKEN_AWARD) },
           { merge: true }
         );
       } else {
