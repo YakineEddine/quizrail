@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/data/backend.dart';
 import 'core/data/migration_service.dart';
@@ -28,11 +29,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'QuizRail',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
-      home: _BootGate(prefsOverride: prefsOverride),
+    return ProviderScope(
+      child: MaterialApp(
+        title: 'QuizRail',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.dark,
+        home: _BootGate(prefsOverride: prefsOverride),
+      ),
     );
   }
 }

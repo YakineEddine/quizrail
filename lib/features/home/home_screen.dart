@@ -11,6 +11,7 @@ import '../../core/widgets/cute_train.dart';
 import '../../core/widgets/game_button.dart';
 import '../../core/widgets/token_counter.dart';
 import '../board/board_screen.dart';
+import '../duel/duel_search_screen.dart';
 import '../tunnel/tunnel_editor_screen.dart';
 
 export '../../core/i18n/app_lang.dart';
@@ -117,6 +118,16 @@ class _HomeScreenState extends State<HomeScreen>
         builder: (_) => TunnelEditorScreen(lang: _lang),
       ),
     );
+  }
+
+  Future<void> _openDuel() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DuelSearchScreen(prefs: _prefs, lang: _lang),
+      ),
+    );
+    await _refreshTokens();
   }
 
   /// Titre avec marque isolée en bidi : "QuizRail" reste un bloc LTR
@@ -257,6 +268,17 @@ class _HomeScreenState extends State<HomeScreen>
                           ar: 'نفق مخصص'),
                       icon: Icons.construction_rounded,
                       onPressed: _openTunnelEditor,
+                    ),
+                    const SizedBox(height: 10),
+                    GameButton(
+                      key: const Key('duelButton'),
+                      variant: GameButtonVariant.gold,
+                      label: _t(
+                          fr: 'Duel en ligne',
+                          en: 'Online duel',
+                          ar: 'مبارزة online'),
+                      icon: Icons.sports_kabaddi_rounded,
+                      onPressed: _openDuel,
                     ),
                     const SizedBox(height: 12),
                     Text(
