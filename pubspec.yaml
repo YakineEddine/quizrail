@@ -59,12 +59,6 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   image: 4.3.0
   flutter_launcher_icons: ^0.14.4
-  flutter_native_splash: ^2.4.4
-
-# For information on the generic Dart part of this file, see the
-# following page: https://dart.dev/tools/pub/pubspec
-
-# The following section is specific to Flutter packages.
 flutter:
 
   # The following line ensures that the Material Icons font is
@@ -74,7 +68,12 @@ flutter:
 
 # Icône de lancement (pièce or + étoile violette sur nuit).
 # Régénérer après modif de assets/icon : voir tool/generate_icon.dart puis
-# `dart run flutter_launcher_icons` et `dart run flutter_native_splash:create`.
+# `dart run flutter_launcher_icons`.
+# (flutter_native_splash a été retiré après génération : les drawables du
+# splash sont déjà dans android/app/src/main/res et fonctionnent sans lui.
+# Pour régénérer le splash : `flutter pub add --dev flutter_native_splash`,
+# `dart run flutter_native_splash:create`, puis le retirer à nouveau —
+# sa version actuelle ne compile plus en debug car figée en SDK 31.)
 flutter_launcher_icons:
   android: true
   ios: false
