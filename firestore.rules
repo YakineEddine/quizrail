@@ -33,5 +33,37 @@ service cloud.firestore {
       allow read, update, delete: if signedIn()
         && request.auth.uid in resource.data.participantIds;
     }
+
+    // File de matchmaking duel : chacun ne gère que sa propre entrée.
+    // L'appariement est fait par la Cloud Function findDuel (Admin SDK).
+    match /duelQueue/{uid} {
+      allow read, create, delete: if isOwner(uid);
+      allow update: if false;
+    }
+
+    // Duels temps réel : lecture participants uniquement, AUCUNE écriture
+    // client sur le score/les questions (arbitrage 100 % Cloud Functions).
+    // Seule la présence (lastSeen/connected de SON propre joueur) est
+    // modifiable directement par le client.
+    match /duels/{duelId} {
+      allow read: if signedIn()
+        && request.auth.uid in resource.data.playerIds;
+      allow create, delete: if false;
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.playerIds
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['players'])
+        && request.resource.data.players.diff(resource.data.players)
+            .affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data.players[request.auth.uid]
+            .diff(resource.data.players[request.auth.uid])
+            .affectedKeys().hasOnly(['lastSeen', 'connected']);
+    }
+
+    // Réponses du duel : jamais lisibles ni modifiables côté client.
+    // Seules les Cloud Functions (Admin SDK) y accèdent.
+    match /duels/{duelId}/secret/{docId} {
+      allow read, write: if false;
+    }
   }
 }

@@ -3,6 +3,9 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 
+// Duel temps réel : matchmaking, arbitrage, pouvoirs, forfait, revanche.
+export * from "./duel";
+
 initializeApp();
 
 // Clé API Claude — Secret Manager uniquement, jamais côté client.
