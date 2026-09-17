@@ -200,8 +200,7 @@ class _ShopViewState extends ConsumerState<_ShopView> {
     // Rafraîchit les droits serveurs à chaque ouverture.
     ref.watch(entitlementsProvider);
     final products = ref.watch(shopProductsProvider);
-    final online =
-        Backend.instance.isOnline || Backend.instance.firestore == null;
+    final online = Backend.instance.isOnline;
     return Directionality(
       textDirection:
           widget.lang.isRtl ? TextDirection.rtl : TextDirection.ltr,

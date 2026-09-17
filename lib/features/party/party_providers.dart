@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/party.dart';
 import 'party_service.dart';
 
-/// Service Party injectable (cloud en prod, fake en tests).
+/// Service Party injectable (Supabase en prod, fake en tests).
 final partyServiceProvider = Provider<PartyService>((ref) {
-  return CloudPartyService();
+  return SupabasePartyService();
 });
 
 /// Room en temps réel (état global animé par le host).

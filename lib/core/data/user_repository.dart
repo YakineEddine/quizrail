@@ -1,39 +1,37 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../i18n/app_lang.dart';
 import '../models/app_user.dart';
 import '../storage/app_prefs.dart';
 import 'backend.dart';
 
 /// Portefeuille + langue : SharedPreferences en source d'affichage,
-/// Firestore (users/{uid}) en miroir cloud quand en ligne.
+/// Supabase (table `profiles`) en miroir cloud quand en ligne.
 /// Chaque écriture est best-effort : le local ne bloque jamais.
 class UserRepository {
   UserRepository({required this.prefs});
 
   final AppPrefs prefs;
 
-  FirebaseFirestore? get _fs => Backend.instance.firestore;
   String? get _uid => Backend.instance.uid;
 
   /// Ramène le cloud vers le local si un profil existe (ex : réinstall).
   /// Sans perte : si le local a PLUS de jetons que le cloud (gains
   /// hors ligne), le max est conservé des deux côtés.
   Future<AppUser> pullToLocal() async {
-    final fs = _fs;
+    final db = Backend.instance.client;
     final uid = _uid;
-    if (fs == null || uid == null) {
+    if (db == null || uid == null) {
       return AppUser(
           uid: 'local', tokens: prefs.tokens, langCode: prefs.lang.code);
     }
     try {
-      final snap = await fs
-          .doc('users/$uid')
-          .get(const GetOptions(source: Source.serverAndCache))
+      final row = await db
+          .from('profiles')
+          .select()
+          .eq('uid', uid)
+          .maybeSingle()
           .timeout(const Duration(seconds: 8));
-      if (!snap.exists) return await _localUser();
-      final cloud =
-          AppUser.fromMap(uid, _stringKeyed(snap.data() ?? {}));
+      if (row == null) return await _localUser();
+      final cloud = AppUser.fromMap(uid, _profileToUser(row));
       final mergedTokens =
           cloud.tokens > prefs.tokens ? cloud.tokens : prefs.tokens;
       if (mergedTokens != prefs.tokens) {
@@ -60,16 +58,16 @@ class UserRepository {
       _push({'lang': lang.code});
 
   Future<void> _push(Map<String, Object?> data) async {
-    final fs = _fs;
+    final db = Backend.instance.client;
     final uid = _uid;
-    if (fs == null || uid == null) return;
+    if (db == null || uid == null) return;
     try {
-      await fs
-          .doc('users/$uid')
-          .set(data, SetOptions(merge: true))
-          .timeout(const Duration(seconds: 8));
+      await db.from('profiles').upsert({
+        'uid': uid,
+        ...data,
+      }).timeout(const Duration(seconds: 8));
     } catch (_) {
-      // Offline / quota / rules : le local fait foi, synchro plus tard.
+      // Offline / quota / RLS : le local fait foi, synchro plus tard.
     }
   }
 
@@ -78,6 +76,13 @@ class UserRepository {
       tokens: prefs.tokens,
       langCode: prefs.lang.code);
 
-  static Map<String, Object?> _stringKeyed(Map<Object?, Object?> raw) =>
-      raw.map((k, v) => MapEntry(k.toString(), v));
+  /// Ligne `profiles` (snake_case) → clés d'[AppUser.fromMap].
+  static Map<String, Object?> _profileToUser(Map<String, dynamic> row) => {
+        'tokens': row['tokens'],
+        'lang': row['lang'],
+        'createdAt': row['created_at'],
+        'displayName': row['display_name'],
+        'country': row['country'],
+        'friendIds': row['friend_ids'],
+      };
 }

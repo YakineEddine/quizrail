@@ -1,8 +1,6 @@
 import 'dart:async';
 
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
-
 import '../../core/data/backend.dart';
 import '../../core/storage/app_prefs.dart';
 import 'monetization_config.dart';
@@ -146,16 +144,10 @@ ShopProduct _fromDetails(ProductDetails d) {
 class PlayBillingService implements BillingService {
   PlayBillingService();
 
-  FirebaseFunctions? _functions;
   StreamSubscription<List<PurchaseDetails>>? _sub;
   final _events = StreamController<BillingEvent>.broadcast();
   final _handled = <String>{};
   bool _disposed = false;
-
-  /// Accès paresseux aux Functions (Firebase peut ne pas être initialisé
-  /// en tests : l'échec est converti en événement `failed`, jamais en crash).
-  FirebaseFunctions _fn() =>
-      _functions ??= FirebaseFunctions.instance;
 
   /// Abonnement paresseux au store (jamais dans le constructeur : le canal
   /// natif n'existe pas en tests desktop, et l'échec doit rester silencieux).
@@ -256,13 +248,16 @@ class PlayBillingService implements BillingService {
     }
   }
 
-  /// Cœur anti-fraude : le crédit (jetons + droits) est écrit par la
-  /// fonction AVANT qu'on finalise l'achat côté store. Sans validation
-  /// serveur, l'achat reste en suspens et rien n'est crédité.
+  /// Cœur anti-fraude : le crédit (jetons + droits) est écrit par l'Edge
+  /// Function `verify-purchase` AVANT qu'on finalise l'achat côté store.
+  /// Sans validation serveur, l'achat reste en suspens et rien n'est crédité.
   Future<void> _verifyThenComplete(PurchaseDetails p) async {
     try {
-      final callable = _fn().httpsCallable('verifyAndGrantPurchase');
-      final res = await callable.call({
+      final db = Backend.instance.client;
+      if (db == null || Backend.instance.uid == null) {
+        throw StateError('Hors ligne : vérification impossible.');
+      }
+      final res = await db.functions.invoke('verify-purchase', body: {
         'productId': p.productID,
         'purchaseToken': p.verificationData.serverVerificationData,
       }).timeout(const Duration(seconds: 40));
@@ -283,8 +278,8 @@ class PlayBillingService implements BillingService {
       _emit(
         p.productID,
         BillingOutcome.failed,
-        e is FirebaseFunctionsException
-            ? (e.message ?? 'Vérification impossible.')
+        e is StateError
+            ? e.message
             : 'Vérification impossible, réessaie.',
       );
     }
@@ -305,21 +300,25 @@ class PlayBillingService implements BillingService {
 }
 
 /// Droits serveurs → prefs locales (bouton pubs, x2 pass, skins).
-/// Lecture seule côté client (rules : écriture fonctions uniquement).
+/// Lecture seule côté client (RLS : écriture edge function uniquement).
 class EntitlementsRepository {
   Future<Entitlements?> pullToLocal(AppPrefs prefs) async {
-    final fs = Backend.instance.firestore;
+    final db = Backend.instance.client;
     final uid = Backend.instance.uid;
-    if (fs == null || uid == null) return null;
+    if (db == null || uid == null) return null;
     try {
-      final snap = await fs
-          .doc('users/$uid/entitlements/profile')
-          .get()
+      final row = await db
+          .from('entitlements')
+          .select()
+          .eq('uid', uid)
+          .maybeSingle()
           .timeout(const Duration(seconds: 10));
-      if (!snap.exists) return const Entitlements();
-      final data = snap
-          .data()!
-          .map((k, v) => MapEntry(k.toString(), v as Object?));
+      if (row == null) return const Entitlements();
+      final data = {
+        'removeAds': row['remove_ads'],
+        'battlePassActive': (row['battle_pass'] as bool?) ?? false,
+        'skins': row['skins'],
+      };
       final ent = Entitlements.fromMap(data);
       await prefs.setRemoveAds(ent.removeAds);
       await prefs.setBattlePass(ent.battlePassActive);

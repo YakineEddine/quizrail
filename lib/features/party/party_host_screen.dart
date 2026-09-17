@@ -11,6 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/game_button.dart';
 import '../../features/tunnel/custom_tunnel.dart';
 import '../../features/tunnel/custom_tunnel_store.dart';
+import 'party_local_screen.dart';
 import 'party_providers.dart';
 import 'party_results_screen.dart';
 import 'party_service.dart';
@@ -45,6 +46,7 @@ class _PartyHostScreenState extends ConsumerState<PartyHostScreen> {
 
   String? _roomId;
   bool _creating = false;
+  bool _retrying = false;
   String? _error;
   CustomTunnel? _pickedCustom;
   List<CustomTunnel> _customs = [];
@@ -92,6 +94,31 @@ class _PartyHostScreenState extends ConsumerState<PartyHostScreen> {
       _service.setPresence(roomId: id, connected: false);
     }
     super.dispose();
+  }
+
+  bool get _isOfflineError =>
+      _error != null && _error!.toLowerCase().contains('hors ligne');
+
+  Future<void> _retryConnection() async {
+    if (_retrying) return;
+    setState(() {
+      _retrying = true;
+      _error = null;
+    });
+    try {
+      await Backend.instance.retry();
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+    if (mounted) await _create();
+  }
+
+  void _goLocal() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PartyLocalScreen(lang: widget.lang),
+      ),
+    );
   }
 
   Future<void> _create() async {
@@ -306,7 +333,14 @@ class _PartyHostScreenState extends ConsumerState<PartyHostScreen> {
         if (_error != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(_error!,
+            child: Text(
+                _isOfflineError
+                    ? _t(
+                        fr: 'Serveur Party injoignable. Vérifie ta connexion ou joue en Party locale en attendant.',
+                        en: 'Party server unreachable. Check your connection or play a local party meanwhile.',
+                        ar: 'تعذر الوصول لخادم الحفلة. تحقق من الاتصال أو العب حفلة محلية مؤقتًا.',
+                      )
+                    : _error!,
                 style: const TextStyle(
                     color: AppColors.pinkPop,
                     fontWeight: FontWeight.w700)),
@@ -316,13 +350,41 @@ class _PartyHostScreenState extends ConsumerState<PartyHostScreen> {
           key: const Key('partyCreateButton'),
           label: _creating
               ? _t(fr: 'Création…', en: 'Creating…', ar: 'جارٍ الإنشاء…')
-              : _t(
-                  fr: 'Créer la room',
-                  en: 'Create room',
-                  ar: 'إنشاء الغرفة'),
+              : _retrying
+                  ? _t(
+                      fr: 'Connexion…',
+                      en: 'Connecting…',
+                      ar: 'جارٍ الاتصال…')
+                  : _t(
+                      fr: 'Créer la room',
+                      en: 'Create room',
+                      ar: 'إنشاء الغرفة'),
           icon: Icons.group_add_rounded,
-          onPressed: _creating ? null : _create,
+          onPressed: (_creating || _retrying) ? null : _create,
         ),
+        if (_isOfflineError) ...[
+          const SizedBox(height: 10),
+          GameButton(
+            key: const Key('partyRetryButton'),
+            label: _t(
+                fr: 'Réessayer la connexion',
+                en: 'Retry connection',
+                ar: 'إعادة الاتصال'),
+            icon: Icons.refresh_rounded,
+            onPressed: _retrying ? null : _retryConnection,
+          ),
+          const SizedBox(height: 10),
+          GameButton(
+            key: const Key('partyLocalButton'),
+            variant: GameButtonVariant.gold,
+            label: _t(
+                fr: 'Party locale (même écran)',
+                en: 'Local party (same screen)',
+                ar: 'حفلة محلية (نفس الشاشة)'),
+            icon: Icons.smartphone_rounded,
+            onPressed: _goLocal,
+          ),
+        ],
       ],
     );
   }

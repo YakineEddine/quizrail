@@ -1,10 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/data/backend.dart';
 import '../../core/models/game_duel.dart';
 
-/// Résultats des callables duel (contrats miroirs de functions/src/duel.ts).
+/// Résultats des RPC duel (contrats miroirs de supabase/schema.sql).
 class DuelSearchResult {
   const DuelSearchResult(
       {required this.matched, this.duelId, this.opponentUid});
@@ -69,7 +68,7 @@ class DuelPowerResult {
 }
 
 /// Façade duel : matchmaking, réponses, pouvoirs, forfait, revanche, présence.
-/// Implémentation cloud (callables + Firestore) ou fake (tests).
+/// Implémentation Supabase (RPC + Realtime) ou fake (tests).
 abstract class DuelService {
   Future<DuelSearchResult> findDuel({required String lang});
   Future<void> leaveQueue();
@@ -90,54 +89,59 @@ abstract class DuelService {
   Stream<GameDuel> watchDuel(String duelId);
 }
 
-Map<String, Object?> _data(Object? res) =>
-    ((res as Map).map((k, v) => MapEntry(k.toString(), v as Object?)));
+Map<String, Object?> _stringKeyed(Map raw) =>
+    raw.map((k, v) => MapEntry(k.toString(), v as Object?));
 
-/// Implémentation réelle : Cloud Functions + Firestore temps réel.
-class CloudDuelService implements DuelService {
-  FirebaseFunctions get _fn => FirebaseFunctions.instance;
-  FirebaseFirestore? get _fs => Backend.instance.firestore;
+/// Ligne `duels` (snake_case) → clés attendues par [GameDuel.fromMap].
+GameDuel _duelFromRow(Map<String, dynamic> row) {
+  return GameDuel.fromMap(row['id'].toString(), {
+    'playerIds': ((row['player_ids'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toList(),
+    'status': row['status'],
+    'questions': row['questions'],
+    'players': row['players'],
+    'winnerUid': row['winner_uid'],
+    'finishReason': row['finish_reason'],
+    'isDraw': row['is_draw'],
+    'rematchRequests': row['rematch_requests'],
+  });
+}
+
+/// Implémentation réelle : RPC Supabase (arbitrage serveur) + Realtime.
+class SupabaseDuelService implements DuelService {
+  SupabaseClient? get _db => Backend.instance.client;
   String? get _uid => Backend.instance.uid;
 
-  void _needOnline() {
-    if (!Backend.instance.isOnline || _uid == null) {
+  SupabaseClient _needOnline() {
+    final db = _db;
+    if (!Backend.instance.isOnline || db == null || _uid == null) {
       throw StateError('Duel indisponible hors ligne.');
     }
-  }
-
-  Never _friendly(FirebaseFunctionsException e) {
-    throw StateError(switch (e.code) {
-      'unauthenticated' => 'Connexion requise.',
-      'not-found' => 'Duel introuvable.',
-      'failed-precondition' => e.message ?? 'Action impossible.',
-      'invalid-argument' => e.message ?? 'Requête invalide.',
-      'resource-exhausted' => e.message ?? 'Quota atteint.',
-      _ => 'Erreur réseau, réessaie.',
-    });
+    return db;
   }
 
   @override
   Future<DuelSearchResult> findDuel({required String lang}) async {
-    _needOnline();
+    final db = _needOnline();
     try {
-      final res = await _fn
-          .httpsCallable('findDuel')
-          .call({'lang': lang}).timeout(const Duration(seconds: 35));
-      return DuelSearchResult.fromMap(_data(res.data));
-    } on FirebaseFunctionsException catch (e) {
-      _friendly(e);
+      final res = await db
+          .rpc('find_duel', params: {'p_lang': lang}).timeout(
+            const Duration(seconds: 35),
+          );
+      return DuelSearchResult.fromMap(_stringKeyed(res as Map));
+    } catch (e) {
+      throw Backend.friendly(e);
     }
   }
 
   @override
   Future<void> leaveQueue() async {
-    final fs = _fs;
+    final db = _db;
     final uid = _uid;
-    if (fs == null || uid == null) return;
+    if (db == null || uid == null) return;
     try {
-      await fs.doc('duelQueue/$uid').delete().timeout(
-            const Duration(seconds: 8),
-          );
+      await db.rpc('leave_queue').timeout(const Duration(seconds: 8));
     } catch (_) {
       // Best-effort : la file expire d'elle-même au prochain appariement.
     }
@@ -151,18 +155,17 @@ class CloudDuelService implements DuelService {
     required int elapsedMs,
     required String lang,
   }) async {
-    _needOnline();
+    final db = _needOnline();
     try {
-      final res = await _fn.httpsCallable('submitDuelAnswer').call({
-        'duelId': duelId,
-        'questionIndex': questionIndex,
-        'answer': answer,
-        'elapsedMs': elapsedMs,
-        'lang': lang,
+      final res = await db.rpc('submit_duel_answer', params: {
+        'p_duel_id': duelId,
+        'p_answer': answer,
+        'p_elapsed_ms': elapsedMs,
+        'p_lang': lang,
       }).timeout(const Duration(seconds: 35));
-      return DuelAnswerResult.fromMap(_data(res.data));
-    } on FirebaseFunctionsException catch (e) {
-      _friendly(e);
+      return DuelAnswerResult.fromMap(_stringKeyed(res as Map));
+    } catch (e) {
+      throw Backend.friendly(e);
     }
   }
 
@@ -171,46 +174,46 @@ class CloudDuelService implements DuelService {
     required String duelId,
     required DuelPower power,
   }) async {
-    _needOnline();
+    final db = _needOnline();
     try {
-      final res = await _fn.httpsCallable('usePower').call({
-        'duelId': duelId,
-        'power': power.apiName,
+      final res = await db.rpc('use_power', params: {
+        'p_duel_id': duelId,
+        'p_power': power.apiName,
       }).timeout(const Duration(seconds: 35));
-      final m = _data(res.data);
+      final m = _stringKeyed(res as Map);
       return DuelPowerResult(
         wallet: (m['wallet'] as num?)?.toInt() ?? 0,
         effectMs: (m['frozenUntil'] as num?)?.toInt() ??
             (m['doubleUntil'] as num?)?.toInt() ??
             0,
       );
-    } on FirebaseFunctionsException catch (e) {
-      _friendly(e);
+    } catch (e) {
+      throw Backend.friendly(e);
     }
   }
 
   @override
   Future<void> claimForfeit({required String duelId}) async {
-    _needOnline();
+    final db = _needOnline();
     try {
-      await _fn.httpsCallable('claimForfeit').call({'duelId': duelId}).timeout(
-            const Duration(seconds: 35),
-          );
-    } on FirebaseFunctionsException catch (e) {
-      _friendly(e);
+      await db.rpc('claim_forfeit', params: {
+        'p_duel_id': duelId,
+      }).timeout(const Duration(seconds: 35));
+    } catch (e) {
+      throw Backend.friendly(e);
     }
   }
 
   @override
   Future<DuelSearchResult> requestRematch({required String duelId}) async {
-    _needOnline();
+    final db = _needOnline();
     try {
-      final res = await _fn
-          .httpsCallable('rematchDuel')
-          .call({'duelId': duelId}).timeout(const Duration(seconds: 35));
-      return DuelSearchResult.fromMap(_data(res.data));
-    } on FirebaseFunctionsException catch (e) {
-      _friendly(e);
+      final res = await db.rpc('request_rematch', params: {
+        'p_duel_id': duelId,
+      }).timeout(const Duration(seconds: 35));
+      return DuelSearchResult.fromMap(_stringKeyed(res as Map));
+    } catch (e) {
+      throw Backend.friendly(e);
     }
   }
 
@@ -219,13 +222,13 @@ class CloudDuelService implements DuelService {
     required String duelId,
     required bool connected,
   }) async {
-    final fs = _fs;
+    final db = _db;
     final uid = _uid;
-    if (fs == null || uid == null) return;
+    if (db == null || uid == null) return;
     try {
-      await fs.doc('duels/$duelId').update({
-        'players.$uid.connected': connected,
-        'players.$uid.lastSeen': DateTime.now().millisecondsSinceEpoch,
+      await db.rpc('touch_duel_presence', params: {
+        'p_duel_id': duelId,
+        'p_connected': connected,
       }).timeout(const Duration(seconds: 8));
     } catch (_) {
       // Best-effort : le forfait se base sur lastSeen, pas sur cet appel.
@@ -234,20 +237,18 @@ class CloudDuelService implements DuelService {
 
   @override
   Stream<GameDuel> watchDuel(String duelId) {
-    final fs = _fs;
-    if (fs == null) {
+    final db = _db;
+    if (db == null) {
       return Stream.error(StateError('Duel indisponible hors ligne.'));
     }
-    return fs.doc('duels/$duelId').snapshots().map((snap) {
-      final data = snap.data();
-      if (!snap.exists || data == null) {
-        throw StateError('Duel introuvable.');
-      }
-      return GameDuel.fromMap(
-        snap.id,
-        data.map((k, v) => MapEntry(k.toString(), v as Object?)),
-      );
-    });
+    return db
+        .from('duels')
+        .stream(primaryKey: ['id'])
+        .eq('id', duelId)
+        .map((rows) {
+          if (rows.isEmpty) throw StateError('Duel introuvable.');
+          return _duelFromRow(rows.first);
+        });
   }
 }
 

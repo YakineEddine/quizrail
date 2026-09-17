@@ -55,7 +55,7 @@ class _BootGate extends StatefulWidget {
 class _BootGateState extends State<_BootGate> {
   late final Future<AppPrefs> _future = _boot();
 
-  /// Démarrage : prefs locales → backend (instant offline si Firebase
+  /// Démarrage : prefs locales → backend (instant offline si Supabase
   /// non configuré) → migration one-shot → pull cloud vers local.
   /// Tout échec réseau est silencieux : l'app reste 100 % jouable.
   Future<AppPrefs> _boot() async {

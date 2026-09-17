@@ -1,5 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../features/tunnel/custom_tunnel.dart';
 import '../../core/data/backend.dart';
@@ -57,42 +56,119 @@ abstract class PartyService {
   Stream<List<PartyPlayer>> watchPlayers(String roomId);
 }
 
-Map<String, Object?> _data(Object? res) =>
-    ((res as Map).map((k, v) => MapEntry(k.toString(), v as Object?)));
+Map<String, Object?> _stringKeyed(Map raw) =>
+    raw.map((k, v) => MapEntry(k.toString(), v as Object?));
 
-class CloudPartyService implements PartyService {
-  FirebaseFunctions get _fn => FirebaseFunctions.instance;
-  FirebaseFirestore? get _fs => Backend.instance.firestore;
+/// Ligne `rooms` (snake_case) → clés attendues par [PartyRoom.fromMap].
+PartyRoom _roomFromRow(Map<String, dynamic> row) {
+  return PartyRoom.fromMap(row['id'].toString(), {
+    'code': row['code'],
+    'hostId': row['host_id'],
+    'status': row['status'],
+    'theme': row['theme'],
+    'questions': row['questions'],
+    'questionIndex': row['question_index'],
+    'playerIds': row['player_ids'],
+    'winnerUid': row['winner_uid'],
+    'isDraw': row['is_draw'],
+  });
+}
+
+/// Ligne `room_players` → clés attendues par [PartyPlayer.fromMap].
+PartyPlayer _playerFromRow(Map<String, dynamic> row) {
+  return PartyPlayer.fromMap(row['uid'].toString(), {
+    'displayName': row['display_name'],
+    'score': row['score'],
+    'correct': row['correct'],
+    'answered': row['answered'],
+    'streak': row['streak'],
+    'bestStreak': row['best_streak'],
+    'lastQuestionIndex': row['last_question_index'],
+    'finished': row['finished'],
+    'finishedAt': row['finished_at'],
+    'connected': row['connected'],
+    'lastSeen': row['last_seen'],
+  });
+}
+
+class SupabasePartyService implements PartyService {
+  SupabaseClient? get _db => Backend.instance.client;
   String? get _uid => Backend.instance.uid;
 
-  void _needOnline() {
-    if (!Backend.instance.isOnline || _uid == null) {
+  SupabaseClient _needOnline() {
+    final db = _db;
+    if (!Backend.instance.isOnline || db == null || _uid == null) {
       throw StateError('Party indisponible hors ligne.');
     }
+    return db;
   }
 
-  Never _friendly(FirebaseFunctionsException e) {
-    throw StateError(switch (e.code) {
-      'unauthenticated' => 'Connexion requise.',
-      'not-found' => 'Room introuvable.',
-      'failed-precondition' => e.message ?? 'Action impossible.',
-      'invalid-argument' => e.message ?? 'Requête invalide.',
-      'permission-denied' => e.message ?? 'Non autorisé.',
-      _ => 'Erreur réseau, réessaie.',
-    });
-  }
-
-  Future<Map<String, Object?>> _call(String name, Map<String, Object?> args) async {
-    _needOnline();
-    try {
-      final res = await _fn
-          .httpsCallable(name)
-          .call(args)
-          .timeout(const Duration(seconds: 35));
-      return _data(res.data);
-    } on FirebaseFunctionsException catch (e) {
-      _friendly(e);
+  /// Construit le set {prompts, answers} comme l'ancien serveur :
+  /// tunnel du marché, tunnel custom, sinon banque standard (nulls).
+  Future<({List<Object?>? prompts, List<Object?>? answers, String theme})>
+      _questionSet({
+    String? theme,
+    String? tunnelId,
+    CustomTunnel? customTunnel,
+  }) async {
+    List<Map<String, Object?>>? prompts;
+    List<Map<String, Object?>>? answers;
+    var resolvedTheme = (theme ?? '').trim();
+    if (customTunnel != null) {
+      prompts = customTunnel.questions
+          .map((q) => {
+                'prompt': {'fr': q.prompt, 'en': q.prompt, 'ar': q.prompt},
+                'difficulty': q.difficulty.code,
+              })
+          .toList();
+      answers = customTunnel.questions
+          .map((q) => {
+                'fr': [q.answer],
+                'en': [q.answer],
+                'ar': [q.answer],
+              })
+          .toList();
+      if (resolvedTheme.isEmpty) resolvedTheme = customTunnel.theme;
+    } else if (tunnelId != null) {
+      final db = _needOnline();
+      try {
+        final row = await db
+            .from('tunnels')
+            .select('theme, questions')
+            .eq('id', tunnelId)
+            .maybeSingle()
+            .timeout(const Duration(seconds: 15));
+        if (row == null) throw StateError('Tunnel introuvable.');
+        final raw = (row['questions'] as List? ?? const []);
+        prompts = raw
+            .whereType<Map>()
+            .map((q) => {
+                  'prompt': {
+                    'fr': '${q['prompt'] ?? ''}',
+                    'en': '${q['prompt'] ?? ''}',
+                    'ar': '${q['prompt'] ?? ''}'
+                  },
+                  'difficulty': '${q['difficulty'] ?? 'medium'}',
+                })
+            .toList();
+        answers = raw
+            .whereType<Map>()
+            .map((q) => {
+                  'fr': ['${q['answer'] ?? ''}'],
+                  'en': ['${q['answer'] ?? ''}'],
+                  'ar': ['${q['answer'] ?? ''}'],
+                })
+            .toList();
+        if (resolvedTheme.isEmpty) {
+          resolvedTheme = (row['theme'] as String?) ?? 'Party';
+        }
+      } catch (e) {
+        throw Backend.friendly(e, fallback: 'Tunnel introuvable.');
+      }
+    } else if (resolvedTheme.isEmpty) {
+      resolvedTheme = 'QuizRail Party';
     }
+    return (prompts: prompts, answers: answers, theme: resolvedTheme);
   }
 
   @override
@@ -102,42 +178,64 @@ class CloudPartyService implements PartyService {
     CustomTunnel? customTunnel,
     required String lang,
   }) async {
-    final args = <String, Object?>{'lang': lang};
-    if (theme != null) args['theme'] = theme;
-    if (tunnelId != null) args['tunnelId'] = tunnelId;
-    if (customTunnel != null) {
-      args['customTunnel'] = {
-        'theme': customTunnel.theme,
-        'questions': customTunnel.questions
-            .map((q) => {
-                  'prompt': q.prompt,
-                  'answer': q.answer,
-                  'difficulty': q.difficulty.code,
-                })
-            .toList(),
-      };
+    final db = _needOnline();
+    try {
+      final set = await _questionSet(
+          theme: theme, tunnelId: tunnelId, customTunnel: customTunnel);
+      final res = await db.rpc('create_party', params: {
+        'p_theme': set.theme,
+        'p_prompts': set.prompts,
+        'p_answers': set.answers,
+      }).timeout(const Duration(seconds: 35));
+      final m = _stringKeyed(res as Map);
+      return PartyRoomRef(
+        roomId: m['roomId'] as String,
+        code: m['code'] as String,
+      );
+    } catch (e) {
+      throw Backend.friendly(e);
     }
-    final m = await _call('createParty', args);
-    return PartyRoomRef(
-      roomId: m['roomId'] as String,
-      code: m['code'] as String,
-    );
   }
 
   @override
   Future<PartyRoomRef> joinParty({required String code}) async {
-    final m = await _call('joinParty', {'code': code});
-    return PartyRoomRef(roomId: m['roomId'] as String, code: code);
+    final db = _needOnline();
+    try {
+      final res = await db.rpc('join_party', params: {
+        'p_code': code,
+      }).timeout(const Duration(seconds: 35));
+      final m = _stringKeyed(res as Map);
+      return PartyRoomRef(
+        roomId: m['roomId'] as String,
+        code: code.trim().toUpperCase(),
+      );
+    } catch (e) {
+      throw Backend.friendly(e);
+    }
   }
 
   @override
   Future<void> leaveParty({required String roomId}) async {
-    await _call('leaveParty', {'roomId': roomId});
+    final db = _needOnline();
+    try {
+      await db.rpc('leave_party', params: {
+        'p_room_id': roomId,
+      }).timeout(const Duration(seconds: 35));
+    } catch (e) {
+      throw Backend.friendly(e);
+    }
   }
 
   @override
   Future<void> startParty({required String roomId}) async {
-    await _call('startParty', {'roomId': roomId});
+    final db = _needOnline();
+    try {
+      await db.rpc('start_party', params: {
+        'p_room_id': roomId,
+      }).timeout(const Duration(seconds: 35));
+    } catch (e) {
+      throw Backend.friendly(e);
+    }
   }
 
   @override
@@ -147,23 +245,42 @@ class CloudPartyService implements PartyService {
     required int elapsedMs,
     required String lang,
   }) async {
-    final m = await _call('submitPartyAnswer', {
-      'roomId': roomId,
-      'answer': answer,
-      'elapsedMs': elapsedMs,
-      'lang': lang,
-    });
-    return PartyAnswerResult.fromMap(m);
+    final db = _needOnline();
+    try {
+      final res = await db.rpc('submit_party_answer', params: {
+        'p_room_id': roomId,
+        'p_answer': answer,
+        'p_elapsed_ms': elapsedMs,
+        'p_lang': lang,
+      }).timeout(const Duration(seconds: 35));
+      return PartyAnswerResult.fromMap(_stringKeyed(res as Map));
+    } catch (e) {
+      throw Backend.friendly(e);
+    }
   }
 
   @override
   Future<void> advanceParty({required String roomId}) async {
-    await _call('advanceParty', {'roomId': roomId});
+    final db = _needOnline();
+    try {
+      await db.rpc('advance_party', params: {
+        'p_room_id': roomId,
+      }).timeout(const Duration(seconds: 35));
+    } catch (e) {
+      throw Backend.friendly(e);
+    }
   }
 
   @override
   Future<void> endParty({required String roomId}) async {
-    await _call('endParty', {'roomId': roomId});
+    final db = _needOnline();
+    try {
+      await db.rpc('end_party', params: {
+        'p_room_id': roomId,
+      }).timeout(const Duration(seconds: 35));
+    } catch (e) {
+      throw Backend.friendly(e);
+    }
   }
 
   @override
@@ -171,13 +288,13 @@ class CloudPartyService implements PartyService {
     required String roomId,
     required bool connected,
   }) async {
-    final fs = _fs;
+    final db = _db;
     final uid = _uid;
-    if (fs == null || uid == null) return;
+    if (db == null || uid == null) return;
     try {
-      await fs.doc('rooms/$roomId/players/$uid').update({
-        'connected': connected,
-        'lastSeen': DateTime.now().millisecondsSinceEpoch,
+      await db.rpc('touch_room_presence', params: {
+        'p_room_id': roomId,
+        'p_connected': connected,
       }).timeout(const Duration(seconds: 8));
     } catch (_) {
       // Best-effort.
@@ -186,36 +303,35 @@ class CloudPartyService implements PartyService {
 
   @override
   Stream<PartyRoom> watchRoom(String roomId) {
-    final fs = _fs;
-    if (fs == null) {
+    final db = _db;
+    if (db == null) {
       return Stream.error(StateError('Party indisponible hors ligne.'));
     }
-    return fs.doc('rooms/$roomId').snapshots().map((snap) {
-      final data = snap.data();
-      if (!snap.exists || data == null) throw StateError('Room introuvable.');
-      return PartyRoom.fromMap(
-        snap.id,
-        data.map((k, v) => MapEntry(k.toString(), v as Object?)),
-      );
-    });
+    return db
+        .from('rooms')
+        .stream(primaryKey: ['id'])
+        .eq('id', roomId)
+        .map((rows) {
+          if (rows.isEmpty) throw StateError('Room introuvable.');
+          return _roomFromRow(rows.first);
+        });
   }
 
   @override
   Stream<List<PartyPlayer>> watchPlayers(String roomId) {
-    final fs = _fs;
-    if (fs == null) {
+    final db = _db;
+    if (db == null) {
       return Stream.error(StateError('Party indisponible hors ligne.'));
     }
-    return fs
-        .collection('rooms/$roomId/players')
-        .orderBy('score', descending: true)
-        .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => PartyPlayer.fromMap(
-                  d.id,
-                  d.data().map((k, v) => MapEntry(k.toString(), v as Object?)),
-                ))
-            .toList());
+    return db
+        .from('room_players')
+        .stream(primaryKey: ['room_id', 'uid'])
+        .eq('room_id', roomId)
+        .map((rows) {
+          final players = rows.map(_playerFromRow).toList()
+            ..sort((a, b) => b.score.compareTo(a.score));
+          return players;
+        });
   }
 }
 

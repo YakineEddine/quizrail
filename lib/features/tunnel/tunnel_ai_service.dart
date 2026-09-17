@@ -1,28 +1,34 @@
-import 'package:cloud_functions/cloud_functions.dart';
-
 import '../../features/tunnel/custom_tunnel.dart';
 import '../../core/data/backend.dart';
+import 'tunnel_local_generator.dart';
 
-/// Appel client de la Cloud Function `generateTunnel`.
-/// La clé API Claude reste dans Secret Manager : le client n'envoie
-/// que { theme, lang } et reçoit 9 questions validées.
+/// Appel de l'Edge Function Supabase `generate-tunnel` (gratuite).
+/// Les clés API (Gemini, OpenAI) restent dans les secrets du projet :
+/// le client n'envoie que { theme, lang } et reçoit 9 questions validées.
+/// Hors ligne : repli local immédiat ([TunnelLocalGenerator]).
 class TunnelAiService {
+  /// Vrai quand la dernière génération a utilisé le repli local.
+  bool lastWasLocalFallback = false;
+
   /// Génère 9 questions (3 par difficulté) pour [theme].
   /// Lève [StateError] avec un message affichable en cas d'échec.
   Future<List<CustomQuestion>> generate({
     required String theme,
     String lang = 'fr',
   }) async {
-    if (!Backend.instance.isOnline) {
-      throw StateError('IA indisponible hors ligne.');
+    final db = Backend.instance.client;
+    if (!Backend.instance.isOnline || db == null) {
+      lastWasLocalFallback = true;
+      return TunnelLocalGenerator.generate(theme: theme, lang: lang);
     }
+    lastWasLocalFallback = false;
     try {
-      final callable =
-          FirebaseFunctions.instance.httpsCallable('generateTunnel');
-      final res = await callable
-          .call({'theme': theme.trim(), 'lang': lang}).timeout(
-            const Duration(seconds: 100),
-          );
+      final res = await db.functions
+          .invoke('generate-tunnel', body: {
+            'theme': theme.trim(),
+            'lang': lang,
+          })
+          .timeout(const Duration(seconds: 100));
       final data = res.data as Map;
       final raw = data['questions'] as List;
       final questions = raw.map((e) {
@@ -36,22 +42,14 @@ class TunnelAiService {
         questions: questions,
       );
       if (!tunnel.isValid) {
-        throw StateError('Réponse IA invalide, réessaie.');
+        throw StateError('Réponse IA invalide.');
       }
       return questions;
-    } on FirebaseFunctionsException catch (e) {
-      throw StateError(_friendly(e));
     } catch (_) {
-      throw StateError('La génération IA a échoué, réessaie.');
+      // Serveur IA injoignable / non déployé / quota : repli local,
+      // le bouton reste toujours utile (9 questions valides).
+      lastWasLocalFallback = true;
+      return TunnelLocalGenerator.generate(theme: theme, lang: lang);
     }
   }
-
-  String _friendly(FirebaseFunctionsException e) => switch (e.code) {
-        'unauthenticated' => 'Connexion requise pour l\u2019IA.',
-        'invalid-argument' =>
-          e.message ?? 'Thème invalide pour l\u2019IA.',
-        'resource-exhausted' =>
-          'Quota IA du jour atteint (5 générations).',
-        _ => 'La génération IA a échoué, réessaie.',
-      };
 }

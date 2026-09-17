@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/data/backend.dart';
 import '../../core/i18n/app_lang.dart';
 import '../../core/storage/app_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/game_button.dart';
 import 'duel_board_screen.dart';
+import 'duel_offline_screen.dart';
 import 'duel_providers.dart';
 
 /// File d'attente duel : animation de recherche, annulation, timeout 60 s.
@@ -37,8 +39,38 @@ class _DuelSearchScreenState extends ConsumerState<DuelSearchScreen> {
       };
 
   void _retry() {
+    _retryAsync();
+  }
+
+  bool _retrying = false;
+
+  Future<void> _retryAsync() async {
+    if (_retrying) return;
+    setState(() => _retrying = true);
+    try {
+      // Le boot initial a pu échouer (Avion, Supabase non configuré…).
+      // Sans ce retry, "Réessayer" re-tentait findDuel en restant offline.
+      await Backend.instance.retry();
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+    if (!mounted) return;
     ref.read(duelSearchProvider.notifier).search(lang: widget.lang.code);
   }
+
+  void _playOffline() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DuelOfflineScreen(
+          prefs: widget.prefs,
+          lang: widget.lang,
+        ),
+      ),
+    );
+  }
+
+  bool _isOfflineError(String? error) =>
+      error != null && error.toLowerCase().contains('hors ligne');
 
   Future<void> _cancel() async {
     await ref.read(duelSearchProvider.notifier).cancel();
@@ -155,12 +187,18 @@ class _DuelSearchScreenState extends ConsumerState<DuelSearchScreen> {
                               size: 64, color: AppColors.pinkPop),
                           const SizedBox(height: 16),
                           Text(
-                            search.error ??
-                                _t(
-                                  fr: 'Erreur réseau.',
-                                  en: 'Network error.',
-                                  ar: 'خطأ في الشبكة.',
-                                ),
+                            _isOfflineError(search.error)
+                                ? _t(
+                                    fr: 'Serveur duel injoignable. Vérifie ta connexion ou joue contre le Train fantôme en attendant.',
+                                    en: 'Duel server unreachable. Check your connection or play the Ghost train meanwhile.',
+                                    ar: 'تعذر الوصول لخادم المبارزة. تحقق من الاتصال أو العب ضد قطار الشبح مؤقتًا.',
+                                  )
+                                : (search.error ??
+                                    _t(
+                                      fr: 'Erreur réseau.',
+                                      en: 'Network error.',
+                                      ar: 'خطأ في الشبكة.',
+                                    )),
                             key: const Key('duelSearchError'),
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.headlineSmall,
@@ -168,13 +206,31 @@ class _DuelSearchScreenState extends ConsumerState<DuelSearchScreen> {
                           const SizedBox(height: 16),
                           GameButton(
                             key: const Key('duelRetryButton'),
-                            label: _t(
-                                fr: 'Réessayer',
-                                en: 'Retry',
-                                ar: 'إعادة المحاولة'),
+                            label: _retrying
+                                ? _t(
+                                    fr: 'Connexion…',
+                                    en: 'Connecting…',
+                                    ar: 'جارٍ الاتصال…')
+                                : _t(
+                                    fr: 'Réessayer',
+                                    en: 'Retry',
+                                    ar: 'إعادة المحاولة'),
                             icon: Icons.refresh_rounded,
-                            onPressed: _retry,
+                            onPressed: _retrying ? null : _retry,
                           ),
+                          if (_isOfflineError(search.error)) ...[
+                            const SizedBox(height: 10),
+                            GameButton(
+                              key: const Key('duelOfflineButton'),
+                              variant: GameButtonVariant.gold,
+                              label: _t(
+                                  fr: 'Jouer hors ligne (bot)',
+                                  en: 'Play offline (bot)',
+                                  ar: 'العب دون اتصال (روبوت)'),
+                              icon: Icons.smart_toy_rounded,
+                              onPressed: _playOffline,
+                            ),
+                          ],
                         ],
                       ],
                     ),

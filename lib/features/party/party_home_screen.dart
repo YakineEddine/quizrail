@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/game_button.dart';
 import 'party_host_screen.dart';
 import 'party_join_screen.dart';
+import 'party_local_screen.dart';
 
 /// Aiguillage Party : créer une room (host) ou rejoindre avec un code.
 class PartyHomeScreen extends StatelessWidget {
@@ -110,6 +111,34 @@ class PartyHomeScreen extends StatelessWidget {
                               ),
                             ),
                           ),
+                        ),
+                        const SizedBox(height: 10),
+                        GameButton(
+                          key: const Key('partyGoLocalButton'),
+                          variant: GameButtonVariant.gold,
+                          label: _t(
+                              fr: 'Party locale (même écran)',
+                              en: 'Local party (same screen)',
+                              ar: 'حفلة محلية (نفس الشاشة)'),
+                          icon: Icons.smartphone_rounded,
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => PartyLocalScreen(
+                                lang: lang,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          _t(
+                            fr: 'Sans réseau : joue en local. En ligne : crée une room.',
+                            en: 'No network? Play locally. Online: create a room.',
+                            ar: 'بدون شبكة؟ العب محليًا. متصل؟ أنشئ غرفة.',
+                          ),
+                          textAlign: TextAlign.center,
+                          style:
+                              Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
                     ),

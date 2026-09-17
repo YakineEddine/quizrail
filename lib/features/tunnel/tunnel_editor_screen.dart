@@ -231,7 +231,8 @@ class _TunnelEditorScreenState extends State<TunnelEditorScreen> {
     }
     setState(() => _aiLoading = true);
     try {
-      final questions = await TunnelAiService().generate(
+      final service = TunnelAiService();
+      final questions = await service.generate(
         theme: _theme.text,
         lang: _lang.code,
       );
@@ -250,11 +251,17 @@ class _TunnelEditorScreenState extends State<TunnelEditorScreen> {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(SnackBar(
-          content: Text(_t(
-            fr: '9 questions générées — relis avant de sauvegarder.',
-            en: '9 questions generated — review before saving.',
-            ar: 'تم توليد 9 أسئلة — راجعها قبل الحفظ.',
-          )),
+          content: Text(service.lastWasLocalFallback
+              ? _t(
+                  fr: 'Serveur IA injoignable : 9 questions locales générées — relis avant de sauvegarder.',
+                  en: 'AI server unreachable: 9 local questions generated — review before saving.',
+                  ar: 'تعذر الوصول لخادم الذكاء الاصطناعي: تم توليد 9 أسئلة محلية — راجعها قبل الحفظ.',
+                )
+              : _t(
+                  fr: '9 questions générées — relis avant de sauvegarder.',
+                  en: '9 questions generated — review before saving.',
+                  ar: 'تم توليد 9 أسئلة — راجعها قبل الحفظ.',
+                )),
         ));
     } on StateError catch (e) {
       if (!mounted) return;

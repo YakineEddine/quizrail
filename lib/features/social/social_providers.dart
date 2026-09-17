@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/leaderboard_entry.dart';
 import 'social_service.dart';
 
-/// Service social injectable (cloud en prod, fake en tests).
+/// Service social injectable (Supabase en prod, fake en tests).
 final socialServiceProvider = Provider<SocialService>((ref) {
-  return CloudSocialService();
+  return SupabaseSocialService();
 });
 
 /// Profil perso (pays, pseudo, friendIds).

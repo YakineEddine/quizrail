@@ -1,25 +1,23 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../../features/tunnel/custom_tunnel_store.dart';
 import '../i18n/app_lang.dart';
 import '../models/game_tunnel.dart';
 import '../storage/app_prefs.dart';
 import 'backend.dart';
 
-/// Migration one-shot SharedPreferences → users/{uid}.
-/// - Compte neuf (doc absent) : tout le local est poussé (zéro perte).
-/// - Doc existant (réinstall / 2e appareil) : fusion sans perte —
-///   jetons = max(local, cloud), langue locale conservée uniquement si
-///   le cloud n'en a pas, tunnels customs locaux importés en privés.
+/// Migration one-shot SharedPreferences → table `profiles` (+ copies
+/// privées des tunnels customs vers `tunnels`).
+/// - Compte neuf (profil absent) : tout le local est poussé (zéro perte).
+/// - Profil existant (réinstall / 2e appareil) : fusion sans perte —
+///   jetons = max(local, cloud), tunnels customs locaux importés en privés.
 /// - Échec réseau ou backend offline : false, réessayé au prochain lancement.
 class MigrationService {
-  /// Fusion jetons sans perte (testable sans Firebase).
+  /// Fusion jetons sans perte (testable sans backend).
   static int mergeTokens({required int local, required int? cloud}) {
     if (cloud == null) return local;
     return local > cloud ? local : cloud;
   }
 
-  /// Pseudo repli déterministe (même convention que les fonctions).
+  /// Pseudo repli déterministe (même convention que le serveur).
   static String _defaultDisplayName(String uid) =>
       'Joueur ${uid.length >= 4 ? uid.substring(0, 4).toUpperCase() : uid}';
 
@@ -29,48 +27,42 @@ class MigrationService {
   }) async {
     if (prefs.cloudMigrated) return true;
     final backend = Backend.instance;
-    final fs = backend.firestore;
+    final db = backend.client;
     final uid = backend.uid;
-    if (fs == null || uid == null) return false;
+    if (db == null || uid == null) return false;
     try {
-      final userRef = fs.doc('users/$uid');
-      final snap = await userRef
-          .get(const GetOptions(source: Source.server))
+      final row = await db
+          .from('profiles')
+          .select()
+          .eq('uid', uid)
+          .maybeSingle()
           .timeout(const Duration(seconds: 10));
-      if (!snap.exists) {
-        await userRef.set({
+      if (row == null) {
+        await db.from('profiles').insert({
+          'uid': uid,
           'tokens': prefs.tokens,
           'lang': prefs.lang.code,
-          'displayName': _defaultDisplayName(uid),
+          'display_name': _defaultDisplayName(uid),
           'country': '--',
-          'friendIds': const [],
-          'createdAt': FieldValue.serverTimestamp(),
-          'migratedAt': FieldValue.serverTimestamp(),
         }).timeout(const Duration(seconds: 10));
       } else {
-        final data = snap.data() ?? {};
-        final cloudTokens = (data['tokens'] as num?)?.toInt();
+        final cloudTokens = (row['tokens'] as num?)?.toInt();
         final merged = mergeTokens(local: prefs.tokens, cloud: cloudTokens);
-        final update = <String, Object?>{
-          'migratedAt': FieldValue.serverTimestamp(),
-        };
+        final update = <String, Object?>{};
         if (merged != cloudTokens) update['tokens'] = merged;
-        if ((data['lang'] as String?) == null) {
-          update['lang'] = prefs.lang.code;
+        if (((row['display_name'] as String?) ?? '').isEmpty) {
+          update['display_name'] = _defaultDisplayName(uid);
         }
-        // Backfill social : n'écrase jamais un pseudo/pays déjà choisi.
-        if ((data['displayName'] as String?) == null) {
-          update['displayName'] = _defaultDisplayName(uid);
-        }
-        if ((data['country'] as String?) == null) {
+        if (((row['country'] as String?) ?? '--') == '--') {
           update['country'] = '--';
         }
-        if (data['friendIds'] == null) {
-          update['friendIds'] = const [];
+        if (update.isNotEmpty) {
+          await db
+              .from('profiles')
+              .update(update)
+              .eq('uid', uid)
+              .timeout(const Duration(seconds: 10));
         }
-        await userRef
-            .set(update, SetOptions(merge: true))
-            .timeout(const Duration(seconds: 10));
         if (merged != prefs.tokens) {
           await prefs.setTokens(merged);
         }
@@ -83,10 +75,12 @@ class MigrationService {
           isPublic: false,
         );
         if (!game.isValid) continue;
-        await fs.collection('tunnels').add({
-          ...game.toMap(),
-          'createdAt': FieldValue.serverTimestamp(),
-          'migratedFromLocal': true,
+        await db.from('tunnels').insert({
+          'theme': game.theme,
+          'questions': game.questions.map((q) => q.toMap()).toList(),
+          'creator_id': uid,
+          'is_public': false,
+          'lang': game.langCode,
         }).timeout(const Duration(seconds: 10));
       }
       await prefs.setCloudMigrated(true);

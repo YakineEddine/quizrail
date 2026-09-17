@@ -5,9 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/game_duel.dart';
 import 'duel_service.dart';
 
-/// Service duel injectable (cloud en prod, fake en tests).
+/// Service duel injectable (Supabase en prod, fake en tests).
 final duelServiceProvider = Provider<DuelService>((ref) {
-  return CloudDuelService();
+  return SupabaseDuelService();
 });
 
 /// Doc duel en temps réel (positions + scores adverses en direct).
